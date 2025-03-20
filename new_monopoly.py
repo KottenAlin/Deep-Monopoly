@@ -21,7 +21,7 @@ class PropertyStatus(Enum):
     MORTGAGED = "Mortgaged"
 
 class Player:
-    def __init__(self, name, token, is_bot=False, bot = None):
+    def __init__(self, name, token, is_bot=False):
         self.name = name
         self.token = token
         self.position = 0
@@ -31,7 +31,6 @@ class Player:
         self.jail_free_cards = 0
         self.bankrupt = False
         self.is_bot = is_bot
-        self.bot = bot
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -57,9 +56,9 @@ class Player:
     def own_property(self, property):
         self.properties.append(property)
         
-    def display_status(self):
+    def display_status(self, board):
         print(f"\n{self.name} ({self.token}):")
-        print(f"  Position: {self.position}")
+        print(f"  Position: {self.position} ({board.spaces[self.position].name if isinstance(board.spaces[self.position], Property) else board.spaces[self.position]})")
         print(f"  Money: ${self.money}")
         print(f"  Properties: {', '.join([p.name for p in self.properties]) if self.properties else 'None'}")
         if self.jail_turns > 0:
@@ -141,10 +140,10 @@ class Property:
 class Board:
     def __init__(self):
         self.spaces = self.create_board()
-        self.chance_cards = self.create_chance_cards()
-        self.community_chest_cards = self.create_community_chest_cards()
-        random.shuffle(self.chance_cards)
-        random.shuffle(self.community_chest_cards)
+        self.Chans_cards = self.create_Chans_cards()
+        self.Almänning_cards = self.create_Almänning_cards()
+        random.shuffle(self.Chans_cards)
+        random.shuffle(self.Almänning_cards)
     
     def create_board(self):
         spaces = [None] * 40
@@ -185,14 +184,14 @@ class Board:
         spaces[34] = Property("Diplomatstaden", 34, 320, PropertyColor.GREEN, [28, 150, 450, 1000, 1200, 1400], 160, 200)
         
         # Dark Blue properties
-        spaces[37] = Property("Park Place", 37, 350, PropertyColor.DARK_BLUE, [35, 175, 500, 1100, 1300, 1500], 175, 200)
-        spaces[39] = Property("Boardwalk", 39, 400, PropertyColor.DARK_BLUE, [50, 200, 600, 1400, 1700, 2000], 200, 200)
+        spaces[37] = Property("Centrum", 37, 350, PropertyColor.DARK_BLUE, [35, 175, 500, 1100, 1300, 1500], 175, 200)
+        spaces[39] = Property("Normalmstorg", 39, 400, PropertyColor.DARK_BLUE, [50, 200, 600, 1400, 1700, 2000], 200, 200)
         
         # Railroads
-        spaces[5] = Property("Reading Railroad", 5, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[15] = Property("Pennsylvania Railroad", 15, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[25] = Property("B&O Railroad", 25, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[35] = Property("Short Line", 35, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
+        spaces[5] = Property("Södra Station", 5, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
+        spaces[15] = Property("Östra station", 15, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
+        spaces[25] = Property("Centralstationen", 25, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
+        spaces[35] = Property("Norra Station", 35, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
         
         # Utilities
         spaces[12] = Property("Elvärket", 12, 150, PropertyColor.UTILITY, [0], 75)
@@ -214,7 +213,7 @@ class Board:
         
         return spaces
     
-    def create_chance_cards(self):
+    def create_Chans_cards(self):
         return [
             "Advance to Go. (Collect $200)",
             "Advance to Illinois Avenue. If you pass Go, collect $200.",
@@ -234,7 +233,7 @@ class Board:
             "You have won a crossword competition. Collect $100."
         ]
     
-    def create_community_chest_cards(self):
+    def create_Almänning_cards(self):
         return [
             "Advance to Go. (Collect $200)",
             "Bank error in your favor. Collect $200.",
@@ -254,14 +253,14 @@ class Board:
             "You inherit $100."
         ]
     
-    def draw_chance_card(self):
-        card = self.chance_cards.pop(0)
-        self.chance_cards.append(card)  # Put the card at the bottom of the deck
+    def draw_Chans_card(self):
+        card = self.Chans_cards.pop(0)
+        self.Chans_cards.append(card)  # Put the card at the bottom of the deck
         return card
     
-    def draw_community_chest_card(self):
-        card = self.community_chest_cards.pop(0)
-        self.community_chest_cards.append(card)  # Put the card at the bottom of the deck
+    def draw_Almänning_card(self):
+        card = self.Almänning_cards.pop(0)
+        self.Almänning_cards.append(card)  # Put the card at the bottom of the deck
         return card
     
     def get_property_at(self, position):
@@ -338,8 +337,18 @@ class Board:
 
 class MonopolyGame:
     def __init__(self):
-        player_count = int(input("Enter number of players: "))
-        bot_count = int(input("Enter number of bots"))
+        # Get player count with default value handling
+        player_count_input = input("Enter number of players (default 0): ").strip()
+        player_count = int(player_count_input) if player_count_input else 0
+        
+        # Get bot count with default value handling
+        bot_count_input = input("Enter number of bots (default 2): ").strip()
+        bot_count = int(bot_count_input) if bot_count_input else 2
+        
+        if bot_count + player_count < 2:
+            print("Not enough players to start the game.")
+            self.game_over = True
+        
         self.board = Board()
         self.players = self.create_players(player_count, bot_count)
         self.current_player_idx = 0
@@ -349,15 +358,18 @@ class MonopolyGame:
     def create_players(self, player_count, bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
+        #bots = []
         for i in range(player_count):
             name = input(f"Enter name for player {i + 1}: ")
             token = tokens[i % len(tokens)] # Cycle through tokens if more than 8 players are playing
             players.append(Player(name, token))
         for i in range(bot_count):
             name = f"Bot {i + 1}"
+            token = "🤖"
+            player = Player(name, token, is_bot=True)
+            #bots.append(Bot(player))
+            players.append(player)
             
-            token = tokens[(i + player_count) % len(tokens)]
-            players.append(Player(name, token, is_bot=True, bot=Bot()))
         return players
     
     def roll_dice(self):
@@ -420,20 +432,26 @@ class MonopolyGame:
         print(f"\n{player.name} landed on {property.name}.")
         print(f"Price: ${property.price}")
         
-        choice = input(f"Would you like to buy {property.name} for ${property.price}? (y/n): ").lower()
-        if choice == 'y' and player.pay(property.price):
+        # check if player is bot
+        
+        if player.is_bot:
+            choice = 'y' if  Bot(player).decide_buy_property(property) else 'n'
+        else:
+            choice = input(f"Would you like to buy {property.name} for ${property.price}? (y/n): ").lower()
+        
+        if choice == 'n' and player.pay(property.price):
+            print(f"{player.name} property is put up on action {property.name}.")
+            self.handel_auction(property)
+        else:
             player.own_property(property)
             property.owner = player
             property.status = PropertyStatus.OWNED
             print(f"{player.name} now owns {property.name}!")
-        else:
-            print(f"{player.name} property is put up on action {property.name}.")
-            self.handel_auction(player, property)
             
     
-    def handel_auction(self, player, property):
+    def handel_auction(self, property):
     
-        print(f"\nAuction for {property.name} (Starting price: ${1})")
+        print(f"\nAuction for {property.name} (Starting price: $1)")
         
         # Players who can participate (not bankrupt and not the one who declined)
         eligible_bidders = [p for p in self.players if not p.bankrupt]
@@ -449,7 +467,10 @@ class MonopolyGame:
                 print(f"\nCurrent bid: ${current_bid}")
                 print(f"{bidder.name}'s turn (Money: ${bidder.money})")
                 
-                choice = input(f"{bidder.name}, bid higher than ${current_bid}? Enter amount (0 to pass): $")
+                if bidder.is_bot:
+                    choice = Bot(bidder).decide_auction_bid(property, current_bid)
+                else:
+                    choice = input(f"{bidder.name}, bid higher than ${current_bid}? Enter amount (0 to pass): $")
                 
                 try:
                     bid = int(choice)
@@ -489,11 +510,11 @@ class MonopolyGame:
             print(f"No one bid on {property.name}. Property remains unowned.")
     
     def handle_card(self, player, card_type):
-        if card_type == "chance":
-            card = self.board.draw_chance_card()
-            print(f"\nChance card: {card}")
+        if card_type == "Chans":
+            card = self.board.draw_Chans_card()
+            print(f"\nChans card: {card}")
         else:  # community chest
-            card = self.board.draw_community_chest_card()
+            card = self.board.draw_Almänning_card()
             print(f"\nCommunity Chest card: {card}")
         
         # Process card effects
@@ -526,54 +547,57 @@ class MonopolyGame:
         if space_name == "Go":
             # Already handled in move logic
             pass
-        elif space_name == "Community Chest":
-            self.handle_card(player, "community_chest")
-        elif space_name == "Income Tax":
+        elif space_name == "Almänning":
+            self.handle_card(player, "Almänning")
+        elif space_name == "Inkomstskatt":
             tax = min(200, int(player.money * 0.1))  # Pay $200 or 10%, whichever is less
             if player.pay(tax):
                 print(f"{player.name} pays ${tax} in Income Tax.")
             else:
                 print(f"{player.name} doesn't have enough money to pay Income Tax!")
                 self.check_bankruptcy(player, tax)
-        elif space_name == "Chance":
-            self.handle_card(player, "chance")
+        elif space_name == "Chans":
+            self.handle_card(player, "C")
         elif space_name == "Jail / Just Visiting":
             print(f"{player.name} is just visiting jail.")
-        elif space_name == "Free Parking":
-            print(f"{player.name} landed on Free Parking.")
-        elif space_name == "Go To Jail":
+        elif space_name == "Fri Parkering":
+            print(f"{player.name} landed on Fri Parkering.")
+        elif space_name == "Gå i fängelse":
             player.go_to_jail()
             print(f"{player.name} goes to jail.")
-        elif space_name == "Luxury Tax":
-            if player.pay(75):
-                print(f"{player.name} pays $75 in Luxury Tax.")
+        elif space_name == "Lyxskatt":
+            if player.pay(100):
+                print(f"{player.name} pays $100 in Luxury Tax.")
             else:
                 print(f"{player.name} doesn't have enough money to pay Luxury Tax!")
-                self.check_bankruptcy(player, 75)
+                self.check_bankruptcy(player, 100)
     
     def handle_jail(self, player):
         if player.jail_turns > 0:
             print(f"\n{player.name} is in jail. {player.jail_turns} turns remaining.")
             
             # Options for getting out of jail
-            if player.jail_free_cards > 0:
-                use_card = input("Use a Get Out of Jail Free card? (y/n): ").lower() == 'y'
-                if use_card:
-                    player.jail_free_cards -= 1
-                    player.jail_turns = 0
-                    print(f"{player.name} used a Get Out of Jail Free card.")
-                    return False  # Player can now roll and move
             
-            pay_fine = input("Pay $50 to get out of jail? (y/n): ").lower() == 'y'
-            if pay_fine and player.pay(50):
+            if player.is_bot:
+                choice = Bot(player).decide_jail_strategy()
+            else:
+                choice = input("What would you like to do?\n1. Roll for doubles\n2. Use Get Out of Jail Free card\n3. Pay $50\nEnter choice: ")
+            
+            if choice == "2" and player.jail_free_cards > 0:
+                player.jail_free_cards -= 1
                 player.jail_turns = 0
-                print(f"{player.name} paid $50 to get out of jail.")
+                print(f"{player.name} used a Get Out of Jail Free card.")
                 return False  # Player can now roll and move
-            
-            # Roll for doubles
-            print(f"{player.name} rolls to try for doubles...")
-            die1, die2 = self.roll_dice()
-            print(f"Rolled: {die1}, {die2}")
+            elif choice == "3":
+                if player.pay(50):
+                    player.jail_turns = 0
+                    print(f"{player.name} paid $50 to get out of jail.")
+                    return False
+            else:
+                # Roll for doubles
+                print(f"{player.name} rolls to try for doubles...")
+                die1, die2 = self.roll_dice()
+                print(f"Rolled: {die1}, {die2}")
             
             if die1 == die2:
                 player.jail_turns = 0
@@ -589,6 +613,7 @@ class MonopolyGame:
         return False  # Not in jail
     
     def property_management(self, player):
+        
         if not player.properties:
             print("\nYou don't own any properties.")
             return
@@ -603,46 +628,182 @@ class MonopolyGame:
                 house_info = ", 1 hotel"
             print(f"{i+1}. {prop.name} ({status}{house_info}) - Value: ${prop.price}")
         
-        choice = input("\nWhat would you like to do?\n1. Mortgage a property\n2. Unmortgage a property\n3. Buy houses/hotels\n4. Sell houses/hotels\n5. Back to turn menu\nEnter choice: ")
+        choice = input("\nWhat would you like to do?\n1. Mortgage a property\n2. Unmortgage a property\n3. Buy houses/hotels\n4. Sell houses/hotels\n5. Trade Property\nEnter choice: ")
         
-        if choice == "1":
-            # Mortgage a property
-            prop_idx = int(input("Enter property number to mortgage: ")) - 1
-            if 0 <= prop_idx < len(player.properties):
-                prop = player.properties[prop_idx]
-                if prop.status != PropertyStatus.MORTGAGED and prop.houses == 0 and not prop.hotel:
-                    mortgage_value = prop.mortgage()
-                    player.receive(mortgage_value)
-                    print(f"Mortgaged {prop.name} for ${mortgage_value}.")
-                else:
-                    print("Cannot mortgage this property. Sell houses first or it's already mortgaged.")
+        # Using a dictionary as a switch case
+        actions = {
+            "1": lambda: self.mortage_property(player),
+            "2": lambda: self.unmortage_property(player),
+            "3": lambda: self.buy_houses(player),
+            "4": lambda: self.sell_houses(player),
+            "5": lambda: self.trade_property(player) 
+        }
+        
+        # Execute the selected action if it exists
+        if choice in actions:
+            actions[choice]()
+    
+    def trade_property(self, player):
+    
+        # Show all other non-bankrupt players
+        available_players = [p for p in self.players if p != player and not p.bankrupt]
+        
+        if not available_players:
+            print("No players available to trade with.")
+            return
+        
+        # Select player to trade with
+        print("\nSelect a player to trade with:")
+        for i, p in enumerate(available_players):
+            print(f"{i+1}. {p.name}")
+        
+        player_idx = int(input("Enter player number (or 0 to cancel): ")) - 1
+        if player_idx < 0 or player_idx >= len(available_players):
+            return
+        
+        trade_partner = available_players[player_idx]
+        
+        # Show your properties
+        if not player.properties:
+            print("You don't have any properties to offer.")
+            return
+        
+        print("\nYour properties to offer:")
+        for i, prop in enumerate(player.properties):
+            status = "Mortgaged" if prop.status == PropertyStatus.MORTGAGED else "Owned"
+            print(f"{i+1}. {prop.name} ({status}) - Value: ${prop.price}")
+        
+        # Select property to offer
+        offer_idx = int(input("Select property to offer (or 0 to cancel): ")) - 1
+        if offer_idx < 0 or offer_idx >= len(player.properties):
+            return
+        
+        offer_property = player.properties[offer_idx]
+        
+        # Show partner's properties
+        if not trade_partner.properties:
+            print(f"{trade_partner.name} doesn't have any properties to trade.")
+            return
+        
+        print(f"\n{trade_partner.name}'s properties:")
+        for i, prop in enumerate(trade_partner.properties):
+            status = "Mortgaged" if prop.status == PropertyStatus.MORTGAGED else "Owned"
+            print(f"{i+1}. {prop.name} ({status}) - Value: ${prop.price}")
+        
+        # Select property to request
+        request_idx = int(input("Select property to request (or 0 to cancel): ")) - 1
+        if request_idx < 0 or request_idx >= len(trade_partner.properties):
+            return
+        
+        request_property = trade_partner.properties[request_idx]
+        
+        # Ask for cash adjustment
+        print("\nWould you like to include cash in the trade?")
+        cash_option = input("1. You pay cash\n2. Request cash\n3. No cash involved\nEnter choice: ")
+        
+        cash_amount = 0
+        if cash_option == "1":
+            cash_amount = int(input(f"How much will you pay? (You have ${player.money}): $"))
+            if cash_amount > player.money:
+                print("You don't have that much money.")
+                return
+        elif cash_option == "2":
+            cash_amount = -int(input(f"How much will you request? ({trade_partner.name} has ${trade_partner.money}): $"))
+            if -cash_amount > trade_partner.money:
+                print(f"{trade_partner.name} doesn't have that much money.")
+                return
+        
+        # If bot, automatically decide
+        if trade_partner.is_bot:
+            # Simple bot logic for deciding trades
+            accept = Bot(trade_partner).decide_trade(request_property, offer_property, -cash_amount)
+            
+            if accept:
+                # Execute the trade
+                player.properties.remove(offer_property)
+                trade_partner.properties.remove(request_property)
+                
+                player.properties.append(request_property)
+                trade_partner.properties.append(offer_property)
+                
+                offer_property.owner = trade_partner
+                request_property.owner = player
+                
+                if cash_amount > 0:
+                    player.pay(cash_amount)
+                    trade_partner.receive(cash_amount)
+                elif cash_amount < 0:
+                    trade_partner.pay(-cash_amount)
+                    player.receive(-cash_amount)
+                
+                print(f"\nTrade accepted! You traded {offer_property.name} for {request_property.name}.")
+                if cash_amount != 0:
+                    print(f"{'You paid' if cash_amount > 0 else 'You received'} ${abs(cash_amount)}.")
             else:
-                print("Invalid property number.")
-        
-        elif choice == "2":
-            # Unmortgage a property
-            prop_idx = int(input("Enter property number to unmortgage: ")) - 1
-            if 0 <= prop_idx < len(player.properties):
-                prop = player.properties[prop_idx]
-                if prop.status == PropertyStatus.MORTGAGED:
-                    unmortgage_cost = prop.unmortgage()
-                    if player.pay(unmortgage_cost):
-                        print(f"Unmortgaged {prop.name} for ${unmortgage_cost}.")
-                    else:
-                        print("Not enough money to unmortgage this property.")
-                        prop.status = PropertyStatus.MORTGAGED  # Revert back if can't pay
-                else:
-                    print("This property is not mortgaged.")
+                print(f"\n{trade_partner.name} rejected your trade offer.")
+        else:
+            # Show trade summary to human player
+            print(f"\nTrade Offer to {trade_partner.name}:")
+            print(f"You offer: {offer_property.name}")
+            print(f"You request: {request_property.name}")
+            if cash_amount > 0:
+                print(f"You will pay: ${cash_amount}")
+            elif cash_amount < 0:
+                print(f"You will receive: ${-cash_amount}")
+            
+            accept = input(f"\n{trade_partner.name}, do you accept this trade? (y/n): ").lower() == 'y'
+            
+            if accept:
+                # Execute the trade
+                player.properties.remove(offer_property)
+                trade_partner.properties.remove(request_property)
+                
+                player.properties.append(request_property)
+                trade_partner.properties.append(offer_property)
+                
+                offer_property.owner = trade_partner
+                request_property.owner = player
+                
+                if cash_amount > 0:
+                    player.pay(cash_amount)
+                    trade_partner.receive(cash_amount)
+                elif cash_amount < 0:
+                    trade_partner.pay(-cash_amount)
+                    player.receive(-cash_amount)
+                
+                print("\nTrade completed successfully!")
             else:
-                print("Invalid property number.")
-        
-        elif choice == "3":
-            # Buy houses/hotels
-            self.buy_houses(player)
-        
-        elif choice == "4":
-            # Sell houses/hotels
-            self.sell_houses(player)
+                print("\nTrade rejected.")
+
+    
+    def mortage_property(self, player):
+        prop_idx = int(input("Enter property number to mortgage: ")) - 1
+        if 0 <= prop_idx < len(player.properties):
+            prop = player.properties[prop_idx]
+            if prop.status != PropertyStatus.MORTGAGED and prop.houses == 0 and not prop.hotel:
+                mortgage_value = prop.mortgage()
+                player.receive(mortgage_value)
+                print(f"Mortgaged {prop.name} for ${mortgage_value}.")
+            else:
+                print("Cannot mortgage this property. Sell houses first or it's already mortgaged.")
+        else:
+            print("Invalid property number.")
+    
+    def unmortage_property(self, player):
+        prop_idx = int(input("Enter property number to unmortgage: ")) - 1
+        if 0 <= prop_idx < len(player.properties):
+            prop = player.properties[prop_idx]
+            if prop.status == PropertyStatus.MORTGAGED:
+                unmortgage_cost = prop.unmortgage()
+                if player.pay(unmortgage_cost):
+                    print(f"Unmortgaged {prop.name} for ${unmortgage_cost}.")
+                else:
+                    print("Not enough money to unmortgage this property.")
+                    prop.status = PropertyStatus.MORTGAGED  # Revert back if can't pay
+            else:
+                print("This property is not mortgaged.")
+        else:
+            print("Invalid property number.")
     
     def buy_houses(self, player):
         # Group properties by color
@@ -778,12 +939,15 @@ class MonopolyGame:
     def play_turn(self):
         player = self.players[self.current_player_idx]
         
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
+        
         if player.bankrupt:
             self.next_player()
             return
         
         self.board.display_board(self.players)
-        player.display_status()
+        player.display_status(self.board)
         
         # Check if player is in jail
         in_jail = self.handle_jail(player)
@@ -792,26 +956,30 @@ class MonopolyGame:
             return
         
         # Player's turn menu
-        while True:
+        while not player.is_bot:
             print("\nTurn Options:")
             print("1. Roll dice")
             print("2. Manage properties")
             print("3. Show all properties")
             choice = input("Enter choice (1-3): ")
             
-            if choice == "1":
-                break  # Continue with dice roll
-            elif choice == "2":
+            if choice == "2":
                 self.property_management(player)
             elif choice == "3":
                 self.display_all_properties()
+                continue
+            else:
+                break
+
         
         # Roll dice and move
         die1, die2 = self.roll_dice()
         dice_sum = die1 + die2
-        is_doubles = die1 == die2
+        
         
         print(f"\n{player.name} rolls: {die1}, {die2} (Total: {dice_sum})")
+        
+        '''is_doubles = die1 == die2
         
         if is_doubles:
             self.doubles_count += 1
@@ -823,6 +991,8 @@ class MonopolyGame:
                 self.doubles_count = 0
                 self.next_player()
                 return
+        '''
+        
         
         # Move player
         passed_go = player.move(dice_sum)
@@ -844,10 +1014,14 @@ class MonopolyGame:
             return
         
         # If doubles, player goes again unless they went to jail
-        if is_doubles and player.jail_turns == 0:
+        '''if is_doubles and player.jail_turns == 0:
             print(f"{player.name} rolled doubles and goes again!")
         else:
-            self.next_player()
+            self.next_player() '''
+        
+        if not player.is_bot:
+            input("Press Enter to continue...")
+        self.next_player()
     
     def display_all_properties(self):
         print("\nAll Properties on the Board:")
@@ -867,22 +1041,27 @@ class MonopolyGame:
     
     def play_game(self):
         print("\nWelcome to Monopoly!")
-        try:
-            while not self.game_over:
-                self.play_turn()
-                #time.sleep(1)  # Small pause between turns
-        except KeyboardInterrupt:
-            print("\nGame cancelled by user.")
+        
+        turns = 0
+    
+        while not self.game_over:
             # Clear the screen
             os.system('cls' if os.name == 'nt' else 'clear')
-            print("Monopoly game ended. Thank you for playing!")
+            
+            self.play_turn()
+            
+            if turns == 100:
+                input("Human check")
+                turns = 0
+            turns += 1
+            #time.sleep(1)  # Small pause between turns
 
 
 
 class Bot:
-    def __init__(self, player, game): # Bot class 
+    def __init__(self, player): # Bot class 
         self.player = player
-        self.game = game
+        #self.game = game
         self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
         
     def decide_buy_property(self, property):
@@ -923,18 +1102,53 @@ class Bot:
         new_bid = current_bid + max(1, int(bid_range * random.random() * 0.5))
         return new_bid
 
+    def decide_trade(self, my_property, their_property, cash_amount):
+        """Decide whether to accept a trade offer."""
+        # Value of properties 
+        my_prop_value = my_property.price * (0.5 if my_property.status == PropertyStatus.MORTGAGED else 1.0)
+        their_prop_value = their_property.price * (0.5 if their_property.status == PropertyStatus.MORTGAGED else 1.0)
+        
+        # Check if we have almost a monopoly with their property
+        gain_monopoly = False
+        for p in self.player.properties:
+            if p.color == their_property.color:
+                gain_monopoly = True
+        
+        # Check if we're giving away part of a monopoly
+        lose_monopoly = False
+        same_color_count = sum(1 for p in self.player.properties if p.color == my_property.color)
+        color_total = sum(1 for p in self.player.properties if isinstance(p, Property) and p.color == my_property.color)
+        if same_color_count > 1 and same_color_count == color_total:
+            lose_monopoly = True
+        
+        # Adjust values based on strategic importance
+        if gain_monopoly:
+            their_prop_value *= 1.5
+        if lose_monopoly:
+            my_prop_value *= 1.5
+        
+        # Consider the cash component
+        total_value_for_me = their_prop_value - my_prop_value + cash_amount
+        
+        # Also consider if we have enough cash
+        if cash_amount < 0 and self.player.money < -cash_amount:
+            return False
+        
+        # Accept if it's a good deal or we're desperate for cash
+        return total_value_for_me > 0 or (cash_amount > 0 and self.player.money < 100)
+
     def decide_jail_strategy(self):
         """Decide how to handle being in jail."""
         # Use get out of jail card if available
         if self.player.jail_free_cards > 0:
-            return "card"
+            return "2"
         
         # Pay the fine if we have plenty of money or in the late game
         if self.player.money > 500:
-            return "pay"
+            return "3"
         
         # Otherwise, try to roll doubles
-        return "roll"
+        return "1"
 
     def decide_house_purchases(self):
         """Decide whether and where to buy houses."""
@@ -1041,5 +1255,11 @@ class Bot:
 
 # Run the game
 if __name__ == "__main__":
-    game = MonopolyGame()
-    game.play_game()
+    try:
+        game = MonopolyGame()
+        game.play_game()
+    except KeyboardInterrupt:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print("\nGame cancelled by user.")
+        print("Monopoly game ended. Thank you for playing!")
+        #print the stats for everyone
