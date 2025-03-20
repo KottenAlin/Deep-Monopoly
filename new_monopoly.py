@@ -1,6 +1,7 @@
 import random
 from enum import Enum
 import time
+import os
 
 class PropertyColor(Enum):
     BROWN = "Brown"
@@ -317,24 +318,25 @@ class Board:
                     player_symbols[(x, y)].append(player.token)
                 else:
                     player_symbols[(x, y)] = [player.token]
-        
         # Print the board
-        print("\n" + "=" * (board_size * 4 + 1))
-        for i in range(board_size):
+        print("\n" + "=" * (board_size * 5 + 1))
+        for i in range(board_size): # Rows
             row = "|"
             for j in range(board_size):
                 cell = board[i][j]
                 if (i, j) in player_symbols:
                     # Show player tokens if present
                     tokens = "".join(player_symbols[(i, j)])
-                    row += f" {tokens} |"
+                    row += f"{tokens:4}|"
                 else:
-                    row += f" {cell} |"
+                    row += f"{cell:4}|"
+
             print(row)
-            print("-" * (board_size * 4 + 1))
+            print("-" * (board_size * 5 + 1))
 
 class MonopolyGame:
-    def __init__(self, player_count=2):
+    def __init__(self):
+        player_count = int(input("Enter number of players: "))
         self.board = Board()
         self.players = self.create_players(player_count)
         self.current_player_idx = 0
@@ -417,7 +419,66 @@ class MonopolyGame:
             property.status = PropertyStatus.OWNED
             print(f"{player.name} now owns {property.name}!")
         else:
-            print(f"{player.name} decided not to buy {property.name}.")
+            print(f"{player.name} property is put up on action {property.name}.")
+            self.handel_auction(player, property)
+            
+    
+    def handel_auction(self, player, property):
+    
+        print(f"\nAuction for {property.name} (Starting price: ${1})")
+        
+        # Players who can participate (not bankrupt and not the one who declined)
+        eligible_bidders = [p for p in self.players if not p.bankrupt]
+        
+        current_bid = 1  # Start at half price
+        highest_bidder = None
+        
+        # Continue auction until only one bidder remains
+        active_bidders = eligible_bidders.copy()
+        
+        while len(active_bidders) > 0:
+            for bidder in active_bidders.copy():
+                print(f"\nCurrent bid: ${current_bid}")
+                print(f"{bidder.name}'s turn (Money: ${bidder.money})")
+                
+                choice = input(f"{bidder.name}, bid higher than ${current_bid}? Enter amount (0 to pass): $")
+                
+                try:
+                    bid = int(choice)
+                    if bid <= current_bid:
+                        print(f"Bid must be higher than ${current_bid}!")
+                        print(f"{bidder.name} passes.")
+                        active_bidders.remove(bidder)
+                    elif bid > bidder.money:
+                        print(f"You don't have enough money for that bid!")
+                        active_bidders.remove(bidder)
+                    else:
+                        current_bid = bid
+                        highest_bidder = bidder
+                        print(f"{bidder.name} bids ${current_bid}!")
+                except ValueError:
+                    print("Invalid input. You pass by default.")
+                    active_bidders.remove(bidder)
+            
+            # If only one bidder left, they win
+            if len(active_bidders) == 1:
+                break
+            
+            # If no bidders left but someone bid before, the last bidder wins
+            if len(active_bidders) == 0 and highest_bidder:
+                break
+        
+        # Conclude the auction
+        if highest_bidder:
+            if highest_bidder.pay(current_bid):
+                highest_bidder.own_property(property)
+                property.owner = highest_bidder
+                property.status = PropertyStatus.OWNED
+                print(f"\n{highest_bidder.name} won the auction for {property.name} at ${current_bid}!")
+            else:
+                print(f"{highest_bidder.name} couldn't pay for the property!")
+        else:
+            print(f"No one bid on {property.name}. Property remains unowned.")
     
     def handle_card(self, player, card_type):
         if card_type == "chance":
@@ -798,9 +859,15 @@ class MonopolyGame:
     
     def play_game(self):
         print("\nWelcome to Monopoly!")
-        while not self.game_over:
-            self.play_turn()
-            time.sleep(1)  # Small pause between turns
+        try:
+            while not self.game_over:
+                self.play_turn()
+                #time.sleep(1)  # Small pause between turns
+        except KeyboardInterrupt:
+            print("\nGame cancelled by user.")
+            # Clear the screen
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print("Monopoly game ended. Thank you for playing!")
 
 # Run the game
 if __name__ == "__main__":
