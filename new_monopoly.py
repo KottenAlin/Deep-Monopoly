@@ -2,6 +2,10 @@ import random
 from enum import Enum
 import time
 import os
+import torch
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim 
 
 class PropertyColor(Enum):
     BROWN = "Brown"
@@ -1251,6 +1255,135 @@ class Bot:
         return {
             "action": "roll"
         }
+
+
+
+class NeuralNetwork:
+    class NeuralNetwork(nn.Module):
+        def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
+            super(NeuralNetwork, self).__init__()
+            self.model = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, output_dim)
+            )
+            
+        def forward(self, x):
+            return self.model(x)
+
+    class NeuralBot(Bot):
+        def __init__(self, player):
+            super().__init__(player)
+            self.model = NeuralNetwork()
+            self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+            self.criterion = nn.MSELoss()
+            self.memory = []  # For experience replay
+            self.epsilon = 0.3  # For exploration vs exploitation
+            
+        def _get_state(self, board, players):
+            """Create a state representation for the neural network"""
+            state = []
+            
+            # Player information
+            state.append(self.player.money / 2000.0)  # Normalized money
+            state.append(self.player.position / 40.0)  # Normalized position
+            state.append(1.0 if self.player.jail_turns > 0 else 0.0)  # In jail?
+            
+            # Property ownership (one-hot encoding for each property)
+            for i in range(40):
+                space = board.spaces[i]
+                if isinstance(space, Property):
+                    # 1 if player owns it, 0 otherwise
+                    state.append(1.0 if space in self.player.properties else 0.0)
+                    # 1 if property is mortgaged, 0 otherwise
+                    state.append(1.0 if space in self.player.properties and space.status == PropertyStatus.MORTGAGED else 0.0)
+                    # Number of houses normalized
+                    if space in self.player.properties and hasattr(space, 'houses'):
+                        state.append(space.houses / 5.0)
+                    else:
+                        state.append(0.0)
+                else:
+                    # Not a property, add zeros as placeholders
+                    state.append(0.0)
+                    state.append(0.0)
+                    state.append(0.0)
+            
+            # Add some opponent information
+            other_players = [p for p in players if p != self.player and not p.bankrupt]
+            avg_money = sum(p.money for p in other_players) / max(1, len(other_players))
+            state.append(avg_money / 2000.0)  # Normalized average opponent money
+            
+            # Pad or truncate to match input_dim
+            while len(state) < 100:
+                state.append(0.0)
+            
+            return torch.tensor(state, dtype=torch.float32)
+        
+        def decide_buy_property(self, property):
+            """Use neural network to decide whether to buy property"""
+            if random.random() < self.epsilon:  # Exploration
+                return super().decide_buy_property(property)
+            
+            # Get state and predict
+            state = self._get_state(None, [])  # Need to implement proper state capture
+            prediction = self.model(state)
+            buy_score = prediction[0].item()  # First output neuron for buying property
+            
+            return buy_score > 0.5
+        
+        def decide_auction_bid(self, property, current_bid):
+            """Use neural network to decide auction bid"""
+            if random.random() < self.epsilon:  # Exploration
+                return super().decide_auction_bid(property, current_bid)
+            
+            # Get state and predict
+            state = self._get_state(None, [])
+            prediction = self.model(state)
+            bid_percentage = prediction[1].item()  # Second output for bid percentage
+            
+            # Bid between current_bid and property.price * bid_percentage
+            max_bid = min(self.player.money * 0.8, property.price * 1.5)
+            new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
+            
+            return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
+        
+        def learn_from_experience(self, old_state, action, reward, new_state):
+            """Store experience and learn from it"""
+            self.memory.append((old_state, action, reward, new_state))
+            
+            # Only train after accumulating some experiences
+            if len(self.memory) > 100:
+                # Sample batch from memory
+                batch = random.sample(self.memory, min(32, len(self.memory)))
+                
+                for old_s, act, rew, new_s in batch:
+                    # Simple Q-learning update
+                    target = rew
+                    if new_s is not None:  # Not a terminal state
+                        target += 0.95 * torch.max(self.model(new_s)).item()
+                    
+                    # Get current prediction and update the action's value
+                    current = self.model(old_s)
+                    target_f = current.clone()
+                    target_f[0, act] = target
+                    
+                    # Train the model
+                    self.optimizer.zero_grad()
+                    loss = self.criterion(current, target_f)
+                    loss.backward()
+                    self.optimizer.step()
+        
+        def save_model(self, path="neural_bot_model.pth"):
+            """Save the neural network model"""
+            torch.save(self.model.state_dict(), path)
+        
+        def load_model(self, path="neural_bot_model.pth"):
+            """Load a previously trained model"""
+            self.model.load_state_dict(torch.load(path))
+            self.model.eval()
+
 
 
 # Run the game
