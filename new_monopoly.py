@@ -196,18 +196,18 @@ class Board:
         spaces[28] = Property("Vattenverket", 28, 150, PropertyColor.UTILITY, [0], 75)
         
         # Non-property spaces (represented by strings)
-        spaces[0] = "Go"
-        spaces[2] = "Community Chest"
-        spaces[4] = "Income Tax"
-        spaces[7] = "Chance"
-        spaces[10] = "Jail / Just Visiting"
-        spaces[17] = "Community Chest"
-        spaces[20] = "Free Parking"
-        spaces[22] = "Chance"
-        spaces[30] = "Go To Jail"
-        spaces[33] = "Community Chest"
-        spaces[36] = "Chance"
-        spaces[38] = "Luxury Tax"
+        spaces[0] = "Gå"
+        spaces[2] = "Almänning"
+        spaces[4] = "Inkomstskatt"
+        spaces[7] = "Chans"
+        spaces[10] = "Fängelse / På besök"
+        spaces[17] = "Almänning"
+        spaces[20] = "Fri Parkering"
+        spaces[22] = "Chans"
+        spaces[30] = "Gå i fängelse"
+        spaces[33] = "Almänning"
+        spaces[36] = "Chans"
+        spaces[38] = "Lyxskatt"
         
         return spaces
     
@@ -269,10 +269,10 @@ class Board:
     def display_board(self, players):
         # Create a simple text-based board representation
         board_repr = [
-            "GÅ", "MÖ", "GK", "ÖS", "IS", "LS", "OR", "CH", "VM", "CO", "FN",
-            "SK", "EB", "ST", "VI", "PS", "SJ", "GK", "TA", "NY", "FP",
-            "KY", "CH", "IN", "IL", "BO", "AT", "VT", "VV", "MA", "GTF",
-            "PA", "NC", "GK", "PE", "KL", "CH", "PK", "LX", "BW"
+            "GÅ", "VÄ", "AL", "HO", "IS", "SÖ", "FO", "CH", "GÖ", "RI", "FÄ",
+            "SE", "EL", "OG", "VA", "ÖS", "SG", "AL", "KA", "NA", "FP",
+            "ST", "CH", "KT", "HA", "CS", "VA", "KU", "VV", "SP", "GTF",
+            "GUT", "DR", "AL", "DI", "NO", "CH", "CE", "LX", "NO"
         ]
         
         # Create a visual board
