@@ -21,7 +21,7 @@ class PropertyStatus(Enum):
     MORTGAGED = "Mortgaged"
 
 class Player:
-    def __init__(self, name, token):
+    def __init__(self, name, token, is_bot=False, bot = None):
         self.name = name
         self.token = token
         self.position = 0
@@ -30,6 +30,8 @@ class Player:
         self.jail_turns = 0
         self.jail_free_cards = 0
         self.bankrupt = False
+        self.is_bot = is_bot
+        self.bot = bot
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -337,19 +339,25 @@ class Board:
 class MonopolyGame:
     def __init__(self):
         player_count = int(input("Enter number of players: "))
+        bot_count = int(input("Enter number of bots"))
         self.board = Board()
-        self.players = self.create_players(player_count)
+        self.players = self.create_players(player_count, bot_count)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
     
-    def create_players(self, count):
+    def create_players(self, player_count, bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
-        for i in range(count):
+        for i in range(player_count):
             name = input(f"Enter name for player {i + 1}: ")
-            token = tokens[i % len(tokens)]
+            token = tokens[i % len(tokens)] # Cycle through tokens if more than 8 players are playing
             players.append(Player(name, token))
+        for i in range(bot_count):
+            name = f"Bot {i + 1}"
+            
+            token = tokens[(i + player_count) % len(tokens)]
+            players.append(Player(name, token, is_bot=True, bot=Bot()))
         return players
     
     def roll_dice(self):
@@ -868,6 +876,168 @@ class MonopolyGame:
             # Clear the screen
             os.system('cls' if os.name == 'nt' else 'clear')
             print("Monopoly game ended. Thank you for playing!")
+
+
+
+class Bot:
+    def __init__(self, player, game): # Bot class 
+        self.player = player
+        self.game = game
+        self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
+        
+    def decide_buy_property(self, property):
+        """Decide whether to buy a property."""
+        # Always buy if plenty of money
+        if self.player.money > property.price * 3:
+            return True
+        
+        # More likely to buy railroads and utilities
+        if property.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+            return random.random() < 0.8
+        
+        # Check if we already own properties of this color
+        same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
+        if same_color_count > 0:
+            return random.random() < 0.7 + (0.1 * same_color_count)  # More likely if we have others
+        
+        # Base decision on risk tolerance and money available
+        return random.random() < self.risk_tolerance and self.player.money > property.price * 1.5
+
+    def decide_auction_bid(self, property, current_bid):
+        """Decide how much to bid in an auction."""
+        max_willing_to_pay = property.price * (0.8 + self.risk_tolerance * 0.4)
+        
+        # Bid higher if we already own properties of this color
+        same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
+        if same_color_count > 0:
+            max_willing_to_pay *= (1 + same_color_count * 0.2)
+        
+        # Don't bid more than we have
+        max_willing_to_pay = min(max_willing_to_pay, self.player.money - 50)  # Keep some reserve
+        
+        if max_willing_to_pay <= current_bid:
+            return 0  # Pass
+        
+        # Bid somewhere between current bid and max willing
+        bid_range = max_willing_to_pay - current_bid
+        new_bid = current_bid + max(1, int(bid_range * random.random() * 0.5))
+        return new_bid
+
+    def decide_jail_strategy(self):
+        """Decide how to handle being in jail."""
+        # Use get out of jail card if available
+        if self.player.jail_free_cards > 0:
+            return "card"
+        
+        # Pay the fine if we have plenty of money or in the late game
+        if self.player.money > 500:
+            return "pay"
+        
+        # Otherwise, try to roll doubles
+        return "roll"
+
+    def decide_house_purchases(self):
+        """Decide whether and where to buy houses."""
+        if self.player.money < 200:  # Keep some reserves
+            return None, None
+        
+        # Group properties by color
+        properties_by_color = {}
+        for prop in self.player.properties:
+            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                if prop.color not in properties_by_color:
+                    properties_by_color[prop.color] = []
+                properties_by_color[prop.color].append(prop)
+        
+        # Find complete sets
+        complete_sets = {}
+        for color, props in properties_by_color.items():
+            color_count = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == color)
+            if len(props) == color_count:
+                complete_sets[color] = props
+        
+        if not complete_sets:
+            return None, None
+        
+        # Prioritize based on position (later in the board is better) and current houses
+        best_set = None
+        best_score = -1
+        
+        for color, props in complete_sets.items():
+            avg_position = sum(p.position for p in props) / len(props)
+            avg_houses = sum(p.houses for p in props) / len(props)
+            
+            # Score based on position (0.4), existing development (0.3), and affordability (0.3)
+            position_score = avg_position / 40  # Normalize to 0-1
+            development_score = (3 - avg_houses) / 3  # Prefer less developed (more room to build)
+            affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
+            
+            score = position_score * 0.4 + development_score * 0.3 + affordability * 0.3
+            
+            if score > best_score:
+                best_score = score
+                best_set = props
+        
+        if not best_set:
+            return None, None
+        
+        # Find the property with the fewest houses
+        best_set.sort(key=lambda p: p.houses)
+        return best_set[0], "house" if best_set[0].houses < 4 else "hotel"
+
+    def decide_mortgage_property(self, amount_needed):
+        """Decide which property to mortgage to raise funds."""
+        if not self.player.properties:
+            return None
+        
+        # Candidate properties that can be mortgaged
+        candidates = [p for p in self.player.properties 
+                      if p.status != PropertyStatus.MORTGAGED and p.houses == 0 and not p.hotel]
+        
+        if not candidates:
+            return None
+        
+        # Sort by importance (least to most)
+        candidates.sort(key=lambda p: (
+            # Sort by whether it's part of a complete set (preserve complete sets)
+            sum(1 for op in self.player.properties if op.color == p.color),
+            # Sort by position value (mortgage less valuable properties first)
+            -p.position,
+            # Sort by mortgage value (mortgage lower value properties first)
+            -p.mortgage_value
+        ))
+        
+        return candidates[0]
+
+    def make_move(self):
+        """Make all decisions for a turn."""
+        # If in jail, decide strategy
+        if self.player.jail_turns > 0:
+            return self.decide_jail_strategy()
+        
+        # Check if we should buy houses
+        property_to_build, building_type = self.decide_house_purchases()
+        if property_to_build and self.player.money > property_to_build.house_price * 2:
+            return {
+                "action": "build",
+                "property": property_to_build,
+                "type": building_type
+            }
+        
+        # If low on money, consider mortgaging properties
+        if self.player.money < 100:
+            property_to_mortgage = self.decide_mortgage_property(100 - self.player.money)
+            if property_to_mortgage:
+                return {
+                    "action": "mortgage",
+                    "property": property_to_mortgage
+                }
+        
+        # Otherwise, just roll the dice
+        return {
+            "action": "roll"
+        }
+
 
 # Run the game
 if __name__ == "__main__":
