@@ -1168,6 +1168,7 @@ class MonopolyGame:
                     mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
                     
                     print(f"{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged")
+
 class Bot:
     def __init__(self, player, game=None): # Bot class 
         self.player = player
@@ -1581,7 +1582,6 @@ class Bot:
         if self.player.money < 100:
             self.decide_mortgage_property(100 - self.player.money)
 
-
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
         super(NeuralNetwork, self).__init__()
@@ -1706,7 +1706,6 @@ class NeuralBot(Bot):
         """Load a previously trained model"""
         self.model.load_state_dict(torch.load(path))
         self.model.eval()
-
 
 # Run the game
 if __name__ == "__main__":
