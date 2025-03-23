@@ -113,18 +113,17 @@ class Property:
             return unmortgage_cost
         return 0
     
-    def add_house(self):
-        if self.status == PropertyStatus.OWNED and self.houses < 4 and not self.hotel:
-            self.houses += 1
-            return True
-        return False
-    
-    def add_hotel(self):
-        if self.status == PropertyStatus.OWNED and self.houses == 4:
-            self.houses = 0
-            self.hotel = True
-            return True
-        return False
+    def add_house_or_hotel(self):
+        #print(self.status, self.hotel, self.houses)
+        if self.status == PropertyStatus.OWNED and not self.hotel:
+            if  self.houses < 4 :
+                self.houses += 1
+                return True
+            elif self.houses == 4:
+                self.hotel = True
+                self.houses = 0
+                return True
+            return False
     
     def remove_hotel(self):
         if self.hotel:
@@ -864,7 +863,7 @@ class MonopolyGame:
                 if prop.houses == 4:
                     # Buy a hotel
                     if player.pay(prop.house_price):
-                        if prop.add_hotel():
+                        if prop.add_house_or_hotel():
                             print(f"Added a hotel to {prop.name}!")
                         else:
                             player.receive(prop.house_price)  # Refund if hotel couldn't be added
@@ -874,7 +873,7 @@ class MonopolyGame:
                 else:
                     # Buy a house
                     if player.pay(prop.house_price):
-                        if prop.add_house():
+                        if prop.add_house_or_hotel():
                             print(f"Added a house to {prop.name}!")
                         else:
                             player.receive(prop.house_price)  # Refund if house couldn't be added
@@ -887,21 +886,14 @@ class MonopolyGame:
             print("Invalid set number.")
     
     def build_house_bot(self, player):
-        property, type = Bot(player, game=self).decide_house_purchases()
+        property = Bot(player, game=self).decide_house_purchases()
         if property and type:
             if property and type:
                 cost = property.house_price
                 if player.pay(cost):
-                    if type == "house" and property.add_house():
-                        print(f"Added a house to {property.name}!")
-                        property.add_house()
+                        print(f"Added a house/hotel to {property.name}!")
+                        property.add_house_or_hotel()
                     # Check if property already has a hotel
-                    elif type == "hotel" and property.add_hotel():
-                        print(f"Added a hotel to {property.name}!")
-                        property.add_hotel()
-                    else:
-                        player.receive(cost)
-                        print(f"Could not add a {type} to this property.")
                 else:
                     print(f"Not enough money to buy a {type} (${cost}).")
     
@@ -957,9 +949,7 @@ class MonopolyGame:
     
     def play_turn(self):
         player = self.players[self.current_player_idx]
-        
         #os.system('cls' if os.name == 'nt' else 'clear')
-        
         
         if player.bankrupt:
             self.next_player()
@@ -993,7 +983,6 @@ class MonopolyGame:
         # Roll dice and move
         die1, die2 = self.roll_dice()
         dice_sum = die1 + die2
-        
         
         print(f"\n{player.name} rolls: {die1}, {die2} (Total: {dice_sum})")
         
@@ -1039,9 +1028,11 @@ class MonopolyGame:
         if not player.is_bot:
             input("Press Enter to continue...")
         else:
-            print(Bot(player, game=self).decide_house_purchases())
+            property = Bot(player, game=self).decide_house_purchases()
+            if property:
+                print(property.name)
             self.build_house_bot(player)
-            Bot(player, game=self).decide_trade()
+            print(Bot(player, game=self).initiate_trade())
         self.next_player()
     
     def display_all_properties(self):
@@ -1375,7 +1366,7 @@ class Bot:
     def decide_house_purchases(self):
         """Decide whether and where to buy houses."""
         if self.player.money < 200:  # Keep some reserves
-            return None, None
+            return None
         
         # Group properties by color
         properties_by_color = {}
@@ -1393,7 +1384,7 @@ class Bot:
                 complete_sets[color] = props
         
         if not complete_sets:
-            return None, None
+            return None
         
         # Prioritize based on position (later in the board is better) and current houses
         best_set = None
@@ -1415,11 +1406,11 @@ class Bot:
                 best_set = props
         
         if not best_set:
-            return None, None
+            return None
         
         # Find the property with the fewest houses
         best_set.sort(key=lambda p: p.houses)
-        return best_set[0], "house" if best_set[0].houses < 4 else "hotel"
+        return best_set[0]
 
     def decide_mortgage_property(self, amount_needed):
         """Decide which property to mortgage to raise funds."""
