@@ -6,22 +6,27 @@
   - add bot house purchasing compaibility
 - create Neural network
 - Devide the program in file
-- add trading compatibility
+- add house purachsing for bots
 
 ## In progress
+  - add trading compatibility
 
 ## Done
 - created basic monopoly game
 - implemented basic bot functionality
+- trade initiations for bots
 
 ## Problems/Bugs
 
-- board not clearning after turn
-- players getting multiple turns
-To create crossed-out text in Markdown, use double tildes (`~~`) around the text.
+- ~~board not clearning after turn~~
+- ~~players getting multiple turns~~
+- ~~players getting multiple turns~~ 
+- ~~jumping over and not displaying chance~~
 
-For example:
-- board not clearning after turn
-- ~~players getting multiple turns~~ (if this item is completed)
-- jumping over and not displaying chance
+
+## Optimisation
+ - Use less cluttered code 
+ - insilaise the bot fewer times
+ - do not display everything when the bot plays
+
 

@@ -776,7 +776,6 @@ class MonopolyGame:
             else:
                 print("\nTrade rejected.")
 
-    
     def mortage_property(self, player):
         prop_idx = int(input("Enter property number to mortgage: ")) - 1
         if 0 <= prop_idx < len(player.properties):
@@ -1042,6 +1041,7 @@ class MonopolyGame:
         else:
             print(Bot(player, game=self).decide_house_purchases())
             self.build_house_bot(player)
+            Bot(player, game=self).decide_trade()
         self.next_player()
     
     def display_all_properties(self):
@@ -1209,6 +1209,155 @@ class Bot:
         
         # Accept if it's a good deal or we're desperate for cash
         return total_value_for_me > 0 or (cash_amount > 0 and self.player.money < 100)
+
+    def initiate_trade(self):
+        """Initiate a trade with another player to complete color sets."""
+        # Don't try to trade if we have very little money
+        if self.player.money < 100:
+            return None
+        # Find properties that would complete our color sets
+        potential_monopolies = {}
+        
+        # Count how many properties we have of each color
+        owned_by_color = {}
+        for prop in self.player.properties:
+            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                if prop.color not in owned_by_color:
+                    owned_by_color[prop.color] = 0
+                owned_by_color[prop.color] += 1
+        
+        # Find how many are in each complete set
+        color_counts = {}
+        for space in self.game.board.spaces:
+            if isinstance(space, Property) and space.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                if space.color not in color_counts:
+                    color_counts[space.color] = 0
+                color_counts[space.color] += 1
+        
+        # Find colors where we're one property away from a monopoly
+        for color, count in owned_by_color.items():
+            if count == color_counts[color] - 1:
+                potential_monopolies[color] = color_counts[color]
+        
+        if not potential_monopolies:
+            # No near-monopolies, try to get more railroads or utilities instead
+            if any(p.color == PropertyColor.RAILROAD for p in self.player.properties):
+                # Try to get more railroads
+                potential_monopolies[PropertyColor.RAILROAD] = 4
+            elif any(p.color == PropertyColor.UTILITY for p in self.player.properties):
+                # Try to get more utilities
+                potential_monopolies[PropertyColor.UTILITY] = 2
+        
+        if not potential_monopolies:
+            return None  # No good trading opportunities
+        
+        # Find the missing properties and their owners
+        targets = []
+        for color in potential_monopolies:
+            # Find properties of this color not owned by us
+            for space in self.game.board.spaces:
+                if isinstance(space, Property) and space.color == color and space not in self.player.properties:
+                    if space.owner and space.owner != self.player and not space.owner.bankrupt:
+                        targets.append((space, space.owner))
+        
+        if not targets:
+            return None  # No targetable properties
+        
+        # Sort targets by value (higher is better)
+        targets.sort(key=lambda x: x[0].price, reverse=True)
+        
+        # Try each target
+        for target_prop, target_owner in targets:
+            # Find what we could offer in exchange
+            offer_props = []
+            for prop in self.player.properties:
+                # Don't offer properties from potential monopolies
+                if prop.color not in potential_monopolies:
+                    # Don't offer railroads or utilities unless we have extras
+                    if prop.color == PropertyColor.RAILROAD:
+                        railroad_count = sum(1 for p in self.player.properties if p.color == PropertyColor.RAILROAD)
+                        if railroad_count <= 1:  # Keep at least one
+                            continue
+                    elif prop.color == PropertyColor.UTILITY:
+                        utility_count = sum(1 for p in self.player.properties if p.color == PropertyColor.UTILITY)
+                        if utility_count <= 1:  # Keep at least one
+                            continue
+                            
+                    # Don't offer properties with houses/hotels
+                    if (hasattr(prop, 'houses') and prop.houses > 0) or (hasattr(prop, 'hotel') and prop.hotel):
+                        continue
+                        
+                    offer_props.append(prop)
+            
+            # No properties to offer
+            if not offer_props:
+                continue
+                
+            # Sort offer properties by how valuable they are to us (less valuable first)
+            offer_props.sort(key=lambda p: p.price)
+            
+            # Try to find a fair trade
+            for offer_prop in offer_props:
+                # Calculate value difference
+                value_diff = target_prop.price - offer_prop.price
+                
+                # Adjust for mortgaged properties
+                if target_prop.status == PropertyStatus.MORTGAGED:
+                    value_diff -= target_prop.mortgage_value * 0.1  # Unmortgaging cost
+                if offer_prop.status == PropertyStatus.MORTGAGED:
+                    value_diff += offer_prop.mortgage_value * 0.1  # They'd have to pay to unmortgage
+                
+                # Determine cash adjustment
+                cash_amount = 0
+                if value_diff > 0:  # We need to add cash
+                    cash_amount = min(value_diff, self.player.money * 0.7)  # Don't spend more than 70% of our money
+                elif value_diff < 0:  # We should receive cash
+                    cash_amount = max(value_diff, -target_owner.money * 0.7)  # Don't ask for more than 70% of their money
+                
+                # Make the trade offer
+                print(f"\n{self.player.name} offers {target_owner.name} a trade:")
+                print(f"Offering: {offer_prop.name}")
+                print(f"Requesting: {target_prop.name}")
+                
+                if cash_amount > 0:
+                    print(f"{self.player.name} offers ${int(cash_amount)} cash")
+                elif cash_amount < 0:
+                    print(f"{self.player.name} requests ${int(-cash_amount)} cash")
+                
+                # For AI opponents, use their decide_trade method
+                if target_owner.is_bot:
+                    bot = Bot(target_owner)
+                    accepted = bot.decide_trade(target_prop, offer_prop, -cash_amount)
+                else:
+                    # For human players, ask for input
+                    accepted = input(f"\n{target_owner.name}, do you accept this trade? (y/n): ").lower() == 'y'
+                
+                if accepted:
+                    # Execute the trade
+                    self.player.properties.remove(offer_prop)
+                    target_owner.properties.remove(target_prop)
+                    
+                    self.player.properties.append(target_prop)
+                    target_owner.properties.append(offer_prop)
+                    
+                    offer_prop.owner = target_owner
+                    target_prop.owner = self.player
+                    
+                    if cash_amount > 0:
+                        self.player.pay(int(cash_amount))
+                        target_owner.receive(int(cash_amount))
+                    elif cash_amount < 0:
+                        target_owner.pay(int(-cash_amount))
+                        self.player.receive(int(-cash_amount))
+                    
+                    print(f"\nTrade completed! {self.player.name} traded {offer_prop.name} for {target_prop.name}.")
+                    if cash_amount != 0:
+                        who_paid = f"{self.player.name} paid" if cash_amount > 0 else f"{target_owner.name} paid"
+                        print(f"{who_paid} ${int(abs(cash_amount))}.")
+                    
+                    return True  # Successfully made a trade
+        
+            return False  # No trades were accepted
 
     def decide_jail_strategy(self):
         """Decide how to handle being in jail."""
