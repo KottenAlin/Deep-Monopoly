@@ -18,12 +18,10 @@ class PropertyColor(Enum):
     DARK_BLUE = "Dark Blue"
     RAILROAD = "Railroad"
     UTILITY = "Utility"
-
 class PropertyStatus(Enum):
     UNOWNED = "Unowned"
     OWNED = "Owned"
     MORTGAGED = "Mortgaged"
-
 class Player:
     def __init__(self, name, token, is_bot=False):
         self.name = name
@@ -60,6 +58,7 @@ class Player:
     def own_property(self, property):
         self.properties.append(property)
         
+        
     def display_status(self, board):
         print(f"\n{self.name} ({self.token}):")
         print(f"  Position: {self.position} ({board.spaces[self.position].name if isinstance(board.spaces[self.position], Property) else board.spaces[self.position]})")
@@ -67,7 +66,6 @@ class Player:
         print(f"  Properties: {', '.join([p.name for p in self.properties]) if self.properties else 'None'}")
         if self.jail_turns > 0:
             print(f"  In jail: {self.jail_turns} turns remaining")
-
 class Property:
     def __init__(self, name, position, price, color, rents, mortgage_value, house_price=0):
         self.name = name
@@ -140,7 +138,6 @@ class Property:
             self.houses -= 1
             return True
         return False
-
 class Board:
     def __init__(self):
         self.spaces = self.create_board()
@@ -890,6 +887,25 @@ class MonopolyGame:
         else:
             print("Invalid set number.")
     
+    def build_house_bot(self, player):
+        property, type = Bot(player, game=self).decide_house_purchases()
+        if property and type:
+            if property and type:
+                cost = property.house_price
+                if player.pay(cost):
+                    if type == "house" and property.add_house():
+                        print(f"Added a house to {property.name}!")
+                        property.add_house()
+                    # Check if property already has a hotel
+                    elif type == "hotel" and property.add_hotel():
+                        print(f"Added a hotel to {property.name}!")
+                        property.add_hotel()
+                    else:
+                        player.receive(cost)
+                        print(f"Could not add a {type} to this property.")
+                else:
+                    print(f"Not enough money to buy a {type} (${cost}).")
+    
     def sell_houses(self, player):
         # Find properties with houses or hotels
         props_with_buildings = [p for p in player.properties if p.houses > 0 or p.hotel]
@@ -943,7 +959,7 @@ class MonopolyGame:
     def play_turn(self):
         player = self.players[self.current_player_idx]
         
-        os.system('cls' if os.name == 'nt' else 'clear')
+        #os.system('cls' if os.name == 'nt' else 'clear')
         
         
         if player.bankrupt:
@@ -975,7 +991,6 @@ class MonopolyGame:
             else:
                 break
 
-        
         # Roll dice and move
         die1, die2 = self.roll_dice()
         dice_sum = die1 + die2
@@ -996,7 +1011,6 @@ class MonopolyGame:
                 self.next_player()
                 return
         '''
-        
         
         # Move player
         passed_go = player.move(dice_sum)
@@ -1025,6 +1039,9 @@ class MonopolyGame:
         
         if not player.is_bot:
             input("Press Enter to continue...")
+        else:
+            print(Bot(player, game=self).decide_house_purchases())
+            self.build_house_bot(player)
         self.next_player()
     
     def display_all_properties(self):
@@ -1050,21 +1067,73 @@ class MonopolyGame:
     
         while not self.game_over:
             # Clear the screen
-            os.system('cls' if os.name == 'nt' else 'clear')
+            #os.system('cls' if os.name == 'nt' else 'clear')
             
             self.play_turn()
             
             if turns == 100:
-                input("Human check")
+                input("Display statistics? (y/n): ").lower()
+                self.display_statistics() # Display statistics if player chooses to
+                input("Press enter to continue...")
                 turns = 0
             turns += 1
             #time.sleep(1)  # Small pause between turns
 
+    def display_statistics(self):
+        # Display a comprehensive property and building report
+                print("\n=== PROPERTY AND BUILDING REPORT ===")
+                active_players = [p for p in self.players if not p.bankrupt]
 
+                # Count total houses and hotels on the board
+                total_houses = 0
+                total_hotels = 0
+                for space in self.board.spaces:
+                    if isinstance(space, Property):
+                        if hasattr(space, 'houses') and space.houses > 0:
+                            total_houses += space.houses
+                        if hasattr(space, 'hotel') and space.hotel:
+                            total_hotels += 1
+
+                print(f"Total buildings on board: {total_houses} houses, {total_hotels} hotels")
+
+                # Display all properties grouped by color
+                color_groups = {}
+                for space in self.board.spaces:
+                    if isinstance(space, Property):
+                        if space.color not in color_groups:
+                            color_groups[space.color] = []
+                        color_groups[space.color].append(space)
+
+                # Print properties by color group
+                for color, properties in color_groups.items():
+                    print(f"\n{color.value} Properties:")
+                    for prop in properties:
+                        owner_info = f"Owned by {prop.owner.name}" if prop.owner else "Unowned"
+                        status_info = f" (Mortgaged)" if prop.status == PropertyStatus.MORTGAGED else ""
+                        
+                        building_info = ""
+                        if hasattr(prop, 'houses') and prop.houses > 0:
+                            building_info = f", {prop.houses} houses"
+                        if hasattr(prop, 'hotel') and prop.hotel:
+                            building_info = ", Hotel"
+                            
+                        rent_info = f", Current rent: ${prop.calculate_rent()}" if prop.owner else ""
+                        print(f"  {prop.name} - ${prop.price} - {owner_info}{status_info}{building_info}{rent_info}")
+
+                # Print player property summaries
+                print("\nPlayer Property Summaries:")
+                for player in active_players:
+                    property_count = len(player.properties)
+                    house_count = sum(p.houses for p in player.properties if hasattr(p, 'houses'))
+                    hotel_count = sum(1 for p in player.properties if hasattr(p, 'hotel') and p.hotel)
+                    mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
+                    
+                    print(f"{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged")
 
 class Bot:
-    def __init__(self, player): # Bot class 
+    def __init__(self, player, game=None): # Bot class 
         self.player = player
+        self.game = game
         #self.game = game
         self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
         
@@ -1105,7 +1174,7 @@ class Bot:
         bid_range = max_willing_to_pay - current_bid
         new_bid = current_bid + max(1, int(bid_range * random.random() * 0.5))
         return new_bid
-
+ 
     def decide_trade(self, my_property, their_property, cash_amount):
         """Decide whether to accept a trade offer."""
         # Value of properties 
@@ -1257,132 +1326,131 @@ class Bot:
         }
 
 
+class NeuralNetwork(nn.Module):
+    def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
+        super(NeuralNetwork, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
+        
+    def forward(self, x):
+        return self.model(x)
 
-class NeuralNetwork:
-    class NeuralNetwork(nn.Module):
-        def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
-            super(NeuralNetwork, self).__init__()
-            self.model = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, output_dim)
-            )
-            
-        def forward(self, x):
-            return self.model(x)
 
-    class NeuralBot(Bot):
-        def __init__(self, player):
-            super().__init__(player)
-            self.model = NeuralNetwork()
-            self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-            self.criterion = nn.MSELoss()
-            self.memory = []  # For experience replay
-            self.epsilon = 0.3  # For exploration vs exploitation
-            
-        def _get_state(self, board, players):
-            """Create a state representation for the neural network"""
-            state = []
-            
-            # Player information
-            state.append(self.player.money / 2000.0)  # Normalized money
-            state.append(self.player.position / 40.0)  # Normalized position
-            state.append(1.0 if self.player.jail_turns > 0 else 0.0)  # In jail?
-            
-            # Property ownership (one-hot encoding for each property)
-            for i in range(40):
-                space = board.spaces[i]
-                if isinstance(space, Property):
-                    # 1 if player owns it, 0 otherwise
-                    state.append(1.0 if space in self.player.properties else 0.0)
-                    # 1 if property is mortgaged, 0 otherwise
-                    state.append(1.0 if space in self.player.properties and space.status == PropertyStatus.MORTGAGED else 0.0)
-                    # Number of houses normalized
-                    if space in self.player.properties and hasattr(space, 'houses'):
-                        state.append(space.houses / 5.0)
-                    else:
-                        state.append(0.0)
+class NeuralBot(Bot):
+    def __init__(self, player):
+        super().__init__(player)
+        self.model = NeuralNetwork()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+        self.criterion = nn.MSELoss()
+        self.memory = []  # For experience replay
+        self.epsilon = 0.3  # For exploration vs exploitation
+        
+    def _get_state(self, board, players):
+        """Create a state representation for the neural network"""
+        state = []
+        
+        # Player information
+        state.append(self.player.money / 2000.0)  # Normalized money
+        state.append(self.player.position / 40.0)  # Normalized position
+        state.append(1.0 if self.player.jail_turns > 0 else 0.0)  # In jail?
+        
+        # Property ownership (one-hot encoding for each property)
+        for i in range(40):
+            space = board.spaces[i]
+            if isinstance(space, Property):
+                # 1 if player owns it, 0 otherwise
+                state.append(1.0 if space in self.player.properties else 0.0)
+                # 1 if property is mortgaged, 0 otherwise
+                state.append(1.0 if space in self.player.properties and space.status == PropertyStatus.MORTGAGED else 0.0)
+                # Number of houses normalized
+                if space in self.player.properties and hasattr(space, 'houses'):
+                    state.append(space.houses / 5.0)
                 else:
-                    # Not a property, add zeros as placeholders
                     state.append(0.0)
-                    state.append(0.0)
-                    state.append(0.0)
-            
-            # Add some opponent information
-            other_players = [p for p in players if p != self.player and not p.bankrupt]
-            avg_money = sum(p.money for p in other_players) / max(1, len(other_players))
-            state.append(avg_money / 2000.0)  # Normalized average opponent money
-            
-            # Pad or truncate to match input_dim
-            while len(state) < 100:
+            else:
+                # Not a property, add zeros as placeholders
                 state.append(0.0)
-            
-            return torch.tensor(state, dtype=torch.float32)
+                state.append(0.0)
+                state.append(0.0)
         
-        def decide_buy_property(self, property):
-            """Use neural network to decide whether to buy property"""
-            if random.random() < self.epsilon:  # Exploration
-                return super().decide_buy_property(property)
-            
-            # Get state and predict
-            state = self._get_state(None, [])  # Need to implement proper state capture
-            prediction = self.model(state)
-            buy_score = prediction[0].item()  # First output neuron for buying property
-            
-            return buy_score > 0.5
+        # Add some opponent information
+        other_players = [p for p in players if p != self.player and not p.bankrupt]
+        avg_money = sum(p.money for p in other_players) / max(1, len(other_players))
+        state.append(avg_money / 2000.0)  # Normalized average opponent money
         
-        def decide_auction_bid(self, property, current_bid):
-            """Use neural network to decide auction bid"""
-            if random.random() < self.epsilon:  # Exploration
-                return super().decide_auction_bid(property, current_bid)
-            
-            # Get state and predict
-            state = self._get_state(None, [])
-            prediction = self.model(state)
-            bid_percentage = prediction[1].item()  # Second output for bid percentage
-            
-            # Bid between current_bid and property.price * bid_percentage
-            max_bid = min(self.player.money * 0.8, property.price * 1.5)
-            new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
-            
-            return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
+        # Pad or truncate to match input_dim
+        while len(state) < 100:
+            state.append(0.0)
         
-        def learn_from_experience(self, old_state, action, reward, new_state):
-            """Store experience and learn from it"""
-            self.memory.append((old_state, action, reward, new_state))
+        return torch.tensor(state, dtype=torch.float32)
+    
+    def decide_buy_property(self, property):
+        """Use neural network to decide whether to buy property"""
+        if random.random() < self.epsilon:  # Exploration
+            return super().decide_buy_property(property)
+        
+        # Get state and predict
+        state = self._get_state(None, [])  # Need to implement proper state capture
+        prediction = self.model(state)
+        buy_score = prediction[0].item()  # First output neuron for buying property
+        
+        return buy_score > 0.5
+    
+    def decide_auction_bid(self, property, current_bid):
+        """Use neural network to decide auction bid"""
+        if random.random() < self.epsilon:  # Exploration
+            return super().decide_auction_bid(property, current_bid)
+        
+        # Get state and predict
+        state = self._get_state(None, [])
+        prediction = self.model(state)
+        bid_percentage = prediction[1].item()  # Second output for bid percentage
+        
+        # Bid between current_bid and property.price * bid_percentage
+        max_bid = min(self.player.money * 0.8, property.price * 1.5)
+        new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
+        
+        return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
+    
+    def learn_from_experience(self, old_state, action, reward, new_state):
+        """Store experience and learn from it"""
+        self.memory.append((old_state, action, reward, new_state))
+        
+        # Only train after accumulating some experiences
+        if len(self.memory) > 100:
+            # Sample batch from memory
+            batch = random.sample(self.memory, min(32, len(self.memory)))
             
-            # Only train after accumulating some experiences
-            if len(self.memory) > 100:
-                # Sample batch from memory
-                batch = random.sample(self.memory, min(32, len(self.memory)))
+            for old_s, act, rew, new_s in batch:
+                # Simple Q-learning update
+                target = rew
+                if new_s is not None:  # Not a terminal state
+                    target += 0.95 * torch.max(self.model(new_s)).item()
                 
-                for old_s, act, rew, new_s in batch:
-                    # Simple Q-learning update
-                    target = rew
-                    if new_s is not None:  # Not a terminal state
-                        target += 0.95 * torch.max(self.model(new_s)).item()
-                    
-                    # Get current prediction and update the action's value
-                    current = self.model(old_s)
-                    target_f = current.clone()
-                    target_f[0, act] = target
-                    
-                    # Train the model
-                    self.optimizer.zero_grad()
-                    loss = self.criterion(current, target_f)
-                    loss.backward()
-                    self.optimizer.step()
-        
-        def save_model(self, path="neural_bot_model.pth"):
-            """Save the neural network model"""
-            torch.save(self.model.state_dict(), path)
-        
-        def load_model(self, path="neural_bot_model.pth"):
-            """Load a previously trained model"""
-            self.model.load_state_dict(torch.load(path))
-            self.model.eval()
+                # Get current prediction and update the action's value
+                current = self.model(old_s)
+                target_f = current.clone()
+                target_f[0, act] = target
+                
+                # Train the model
+                self.optimizer.zero_grad()
+                loss = self.criterion(current, target_f)
+                loss.backward()
+                self.optimizer.step()
+    
+    def save_model(self, path="neural_bot_model.pth"):
+        """Save the neural network model"""
+        torch.save(self.model.state_dict(), path)
+    
+    def load_model(self, path="neural_bot_model.pth"):
+        """Load a previously trained model"""
+        self.model.load_state_dict(torch.load(path))
+        self.model.eval()
 
 
 
