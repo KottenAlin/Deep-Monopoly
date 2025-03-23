@@ -7,6 +7,7 @@
 - create Neural network
 - Devide the program in file
 - add house purachsing for bots
+- fixing house selling for bots
 
 ## In progress
   - add trading compatibility
@@ -22,6 +23,7 @@
 - ~~players getting multiple turns~~
 - ~~players getting multiple turns~~ 
 - ~~jumping over and not displaying chance~~
+  
 
 
 ## Optimisation

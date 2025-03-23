@@ -58,12 +58,19 @@ class Player:
     def own_property(self, property):
         self.properties.append(property)
         
-        
     def display_status(self, board):
         print(f"\n{self.name} ({self.token}):")
         print(f"  Position: {self.position} ({board.spaces[self.position].name if isinstance(board.spaces[self.position], Property) else board.spaces[self.position]})")
         print(f"  Money: ${self.money}")
-        print(f"  Properties: {', '.join([p.name for p in self.properties]) if self.properties else 'None'}")
+        print(f"  Properties: ", end="")
+        if self.properties:
+            property_list = []
+            for p in self.properties:
+                status = " (Mortgaged)" if p.status == PropertyStatus.MORTGAGED else '(' + str(p.houses) + ')'
+                property_list.append(f"{p.name}{status}")
+            print(', '.join(property_list))
+        else:
+            print("None")
         if self.jail_turns > 0:
             print(f"  In jail: {self.jail_turns} turns remaining")
 class Property:
@@ -100,15 +107,16 @@ class Property:
         else:
             return self.rents[self.houses]
     
-    def mortgage(self):
+    def mortgage(self, player):
         if self.status == PropertyStatus.OWNED and self.houses == 0 and not self.hotel:
             self.status = PropertyStatus.MORTGAGED
+            player.receive(self.mortgage_value)
             return self.mortgage_value
         return 0
     
     def unmortgage(self):
         if self.status == PropertyStatus.MORTGAGED:
-            unmortgage_cost = int(self.mortgage_value * 1.1)  # 10% interest
+            unmortgage_cost = int(self.mortgage_value)
             self.status = PropertyStatus.OWNED
             return unmortgage_cost
         return 0
@@ -132,7 +140,7 @@ class Property:
             return True
         return False
     
-    def remove_house(self):
+    def remove_house(self, house_count=1):
         if self.houses > 0:
             self.houses -= 1
             return True
@@ -391,6 +399,11 @@ class MonopolyGame:
         for prop in player.properties:
             if prop.status != PropertyStatus.MORTGAGED:
                 total_assets += prop.mortgage_value
+            # Add value of houses and hotels (half of purchase price)
+            if hasattr(prop, 'houses') and prop.houses > 0:
+                total_assets += (prop.house_price // 2) * prop.houses
+            elif hasattr(prop, 'hotel') and prop.hotel:
+                total_assets += (prop.house_price // 2) * 5  # Hotel is worth 5 houses
         
         if total_assets < amount_due:
             print(f"\n{player.name} is bankrupt!")
@@ -408,8 +421,14 @@ class MonopolyGame:
             if len(active_players) == 1:
                 self.game_over = True
                 print(f"\n{active_players[0].name} wins the game!")
-            
-            return True
+        else:
+            if Bot(player).decide_mortgage_property(amount_due): # Can the bot mortgage property?
+                player.pay(amount_due)
+                return True
+            else:
+                player.bankrupt = True
+                print(f"\n{player.name} is bankrupt!")
+                return False
         return False
         
     def handle_property_landing(self, player, property, dice_sum=None):
@@ -426,8 +445,9 @@ class MonopolyGame:
                 print(f"{player.name} pays ${rent} to {property.owner.name}.")
             else:
                 print(f"{player.name} doesn't have enough money to pay the rent!")
+                self.display_statistics()
                 self.check_bankruptcy(player, rent, property.owner)
-    
+                
     def offer_property_purchase(self, player, property):
         print(f"\n{player.name} landed on {property.name}.")
         print(f"Price: ${property.price}")
@@ -448,7 +468,6 @@ class MonopolyGame:
             property.status = PropertyStatus.OWNED
             print(f"{player.name} now owns {property.name}!")
             
-    
     def handel_auction(self, property):
     
         print(f"\nAuction for {property.name} (Starting price: $1)")
@@ -1033,6 +1052,7 @@ class MonopolyGame:
                 print(property.name)
             self.build_house_bot(player)
             print(Bot(player, game=self).initiate_trade())
+            Bot(player, game=self).decide_unmortgage_property()
         self.next_player()
     
     def display_all_properties(self):
@@ -1051,6 +1071,34 @@ class MonopolyGame:
                     status = "Unowned"
                 print(f"{space.name} - ${space.price} - {status}")
     
+    def decide_winner(self):
+        print("\n=== GAME REACHED 500 TURNS LIMIT ===")
+                
+        # Find the player with the most money
+        active_players = [p for p in self.players if not p.bankrupt]
+        if active_players:
+            winner = max(active_players, key=lambda p: p.money)
+            
+            # Calculate total value (money + properties)
+            player_values = {}
+            for p in active_players:
+                total_value = p.money
+                for prop in p.properties:
+                    total_value += prop.price
+                    if hasattr(prop, 'houses') and prop.houses > 0:
+                        total_value += prop.house_price * prop.houses
+                    if hasattr(prop, 'hotel') and prop.hotel:
+                        total_value += prop.house_price * 5
+                player_values[p.name] = total_value
+            
+            print("\n=== FINAL STANDINGS ===")
+            for name, value in sorted(player_values.items(), key=lambda x: x[1], reverse=True):
+                print(f"{name}: ${value}")
+            
+            print(f"\n{winner.name} WINS THE GAME WITH ${winner.money}!")
+            self.game_over = True
+            return
+    
     def play_game(self):
         print("\nWelcome to Monopoly!")
         
@@ -1062,14 +1110,18 @@ class MonopolyGame:
             
             self.play_turn()
             
-            if turns == 100:
+            if turns >= 500:
+                self.decide_winner()
+            
+            if turns % 100 == 0 and turns != 0:
                 input("Display statistics? (y/n): ").lower()
                 self.display_statistics() # Display statistics if player chooses to
                 input("Press enter to continue...")
-                turns = 0
             turns += 1
             #time.sleep(1)  # Small pause between turns
-
+        input("display statistics... ")
+        self.display_statistics()
+        
     def display_statistics(self):
         # Display a comprehensive property and building report
                 print("\n=== PROPERTY AND BUILDING REPORT ===")
@@ -1120,7 +1172,6 @@ class MonopolyGame:
                     mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
                     
                     print(f"{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged")
-
 class Bot:
     def __init__(self, player, game=None): # Bot class 
         self.player = player
@@ -1415,26 +1466,107 @@ class Bot:
     def decide_mortgage_property(self, amount_needed):
         """Decide which property to mortgage to raise funds."""
         if not self.player.properties:
-            return None
+            return False
+
+        # First, look for properties with houses/hotels to sell
+        properties_with_buildings = [p for p in self.player.properties 
+                      if (hasattr(p, 'houses') and p.houses > 0) or 
+                         (hasattr(p, 'hotel') and p.hotel)]
         
-        # Candidate properties that can be mortgaged
+        # Sort buildings by value (sell least valuable first)
+        properties_with_buildings.sort(key=lambda p: p.house_price)
+        
+        # Try selling houses/hotels first
+        properties_to_mortgage = []
+        raised_amount = 0
+        
+        for prop in properties_with_buildings:
+            if raised_amount >= amount_needed:
+                return True
+            if prop.hotel:
+                # Selling a hotel yields half the house price * 5
+                raised_amount += (prop.house_price // 2) * 5
+                prop.remove_hotel()
+
+            elif prop.houses > 0:
+                # Calculate how many houses we need to sell
+                houses_to_sell = min(prop.houses, 
+                        ((amount_needed - raised_amount) + (prop.house_price // 2) - 1) // (prop.house_price // 2))
+                raised_amount += (prop.house_price // 2) * houses_to_sell
+                prop.remove_house(house_count = houses_to_sell)
+        
+        # If selling buildings wasn't enough, mortgage properties
         candidates = [p for p in self.player.properties 
-                      if p.status != PropertyStatus.MORTGAGED and p.houses == 0 and not p.hotel]
-        
-        if not candidates:
-            return None
-        
-        # Sort by importance (least to most)
+                if p.status != PropertyStatus.MORTGAGED and p.houses == 0 and not p.hotel]
+            
+        # Sort candidates by the criteria defined above
         candidates.sort(key=lambda p: (
-            # Sort by whether it's part of a complete set (preserve complete sets)
             sum(1 for op in self.player.properties if op.color == p.color),
-            # Sort by position value (mortgage less valuable properties first)
             -p.position,
-            # Sort by mortgage value (mortgage lower value properties first)
             -p.mortgage_value
         ))
         
-        return candidates[0]
+        # Mortgage properties until we've raised enough money
+        for prop in candidates:
+            properties_to_mortgage.append(prop)
+            raised_amount += prop.mortgage_value
+            if raised_amount >= amount_needed:
+                print(f"\n mortgaging properties to pay off debts.")
+                for prop in properties_to_mortgage:
+                    prop.mortgage(self.player)
+                return True
+
+    def decide_unmortgage_property(self):
+        """Decide which properties to unmortgage based on wealth and completing sets."""
+        # Only unmortgage if we have plenty of money (at least 500)
+        if self.player.money < 500:
+            return None
+        
+        # Find all mortgaged properties
+        mortgaged_props = [p for p in self.player.properties if p.status == PropertyStatus.MORTGAGED]
+        
+        if not mortgaged_props:
+            return None
+        
+        # Count properties by color
+        props_by_color = {}
+        for prop in self.player.properties:
+            if prop.color not in props_by_color:
+                props_by_color[prop.color] = []
+            props_by_color[prop.color].append(prop)
+        
+        # Find total properties in each color group
+        color_counts = {}
+        for space in self.game.board.spaces:
+            if isinstance(space, Property):
+                if space.color not in color_counts:
+                    color_counts[space.color] = 0
+                color_counts[space.color] += 1
+        
+        # First priority: unmortgage properties that complete a set
+        for prop in mortgaged_props:
+            if prop.color in props_by_color:
+                mortgaged_in_color = sum(1 for p in props_by_color[prop.color] if p.status == PropertyStatus.MORTGAGED)
+                owned_in_color = len(props_by_color[prop.color])
+                
+                # If this is the only mortgaged property in a complete set
+                if owned_in_color == color_counts.get(prop.color, 0) and mortgaged_in_color == 1:
+                    unmortgage_cost = prop.unmortgage(self.player)
+                    if unmortgage_cost <= self.player.money - 500:  # Keep some reserves
+                        print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost} to complete a set")
+                        self.player.pay(unmortgage_cost)
+                        return prop
+        
+        # Second priority: unmortgage any property if we're wealthy
+        if self.player.money > 2000:
+            for prop in mortgaged_props:
+                unmortgage_cost = prop.unmortgage(self.player)
+                if unmortgage_cost <= self.player.money - 700:  # Keep larger reserves
+                    print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost}")
+                    self.player.pay(unmortgage_cost)
+                    return prop
+        
+        return None
 
     def make_move(self):
         """Make all decisions for a turn."""
@@ -1465,7 +1597,6 @@ class Bot:
             "action": "roll"
         }
 
-
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
         super(NeuralNetwork, self).__init__()
@@ -1479,7 +1610,6 @@ class NeuralNetwork(nn.Module):
         
     def forward(self, x):
         return self.model(x)
-
 
 class NeuralBot(Bot):
     def __init__(self, player):
@@ -1591,7 +1721,6 @@ class NeuralBot(Bot):
         """Load a previously trained model"""
         self.model.load_state_dict(torch.load(path))
         self.model.eval()
-
 
 
 # Run the game
