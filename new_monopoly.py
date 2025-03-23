@@ -905,6 +905,7 @@ class MonopolyGame:
             print("Invalid set number.")
     
     def build_house_bot(self, player):
+        ''' build house for bot '''
         property = Bot(player, game=self).decide_house_purchases()
         if property and type:
             if property and type:
@@ -1047,12 +1048,7 @@ class MonopolyGame:
         if not player.is_bot:
             input("Press Enter to continue...")
         else:
-            property = Bot(player, game=self).decide_house_purchases()
-            if property:
-                print(property.name)
-            self.build_house_bot(player)
-            print(Bot(player, game=self).initiate_trade())
-            Bot(player, game=self).decide_unmortgage_property()
+            Bot(player, game=self).make_move()
         self.next_player()
     
     def display_all_properties(self):
@@ -1558,7 +1554,7 @@ class Bot:
                         return prop
         
         # Second priority: unmortgage any property if we're wealthy
-        if self.player.money > 2000:
+        if self.player.money > 1000:
             for prop in mortgaged_props:
                 unmortgage_cost = prop.unmortgage(self.player)
                 if unmortgage_cost <= self.player.money - 700:  # Keep larger reserves
@@ -1573,29 +1569,18 @@ class Bot:
         # If in jail, decide strategy
         if self.player.jail_turns > 0:
             return self.decide_jail_strategy()
-        
-        # Check if we should buy houses
-        property_to_build, building_type = self.decide_house_purchases()
-        if property_to_build and self.player.money > property_to_build.house_price * 2:
-            return {
-                "action": "build",
-                "property": property_to_build,
-                "type": building_type
-            }
+            
+        property = self.decide_house_purchases()
+        if property:
+            print(property.name)
+        self.game.build_house_bot(self.player)
+        print(self.initiate_trade())
+        self.decide_unmortgage_property()
         
         # If low on money, consider mortgaging properties
         if self.player.money < 100:
-            property_to_mortgage = self.decide_mortgage_property(100 - self.player.money)
-            if property_to_mortgage:
-                return {
-                    "action": "mortgage",
-                    "property": property_to_mortgage
-                }
-        
-        # Otherwise, just roll the dice
-        return {
-            "action": "roll"
-        }
+            self.decide_mortgage_property(100 - self.player.money)
+
 
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
