@@ -71,7 +71,6 @@ class Player:
                 status = " (Mortgaged)" if p.status == PropertyStatus.MORTGAGED else '(' + str(p.houses) + ')'
                 property_list.append(f"{p.name}{status}")
 
-
 class Property:
     def __init__(self, name, position, price, color, rents, mortgage_value, house_price=0):
         self.name = name
@@ -275,7 +274,6 @@ class Board:
             return None
         return self.spaces[position]
 
-
 class MonopolyGame:
     def __init__(self, bot_count=2):
         
@@ -329,7 +327,7 @@ class MonopolyGame:
                 total_assets += (prop.house_price // 2) * 5  # Hotel is worth 5 houses
         
         if total_assets < amount_due:
-            print(f"\n{player.name} is bankrupt!")
+            #rint(f"\n{player.name} is bankrupt!")
             player.bankrupt = True
             self.transfer_assets(player, recipient)
         else:
@@ -338,7 +336,7 @@ class MonopolyGame:
                 return True
             else:
                 player.bankrupt = True
-                (f"\n{player.name} is bankrupt!")
+                #(f"\n{player.name} is bankrupt!")
                 self.transfer_assets(player, recipient)
         return False
         
@@ -358,7 +356,7 @@ class MonopolyGame:
         #print(len(active_players), active_players)
         if len(active_players) == 1:
             self.game_over = True
-            print(f"\n{active_players[0].name} wins the game!")
+            print(f"{active_players[0].name} wins the game!")
     
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -547,10 +545,9 @@ class MonopolyGame:
                 
                 die1, die2 = self.roll_dice()
                 
-            
             if die1 == die2:
                 player.jail_turns = 0
-                
+
                 return False  # Player can now move using this roll
             else:
                 player.jail_turns -= 1
@@ -575,7 +572,6 @@ class MonopolyGame:
                     #print(f"Not enough money to buy a {type} (${cost}).")
                     return
     
-
     def play_turn(self):
         player = self.players[self.current_player_idx]
         #os.system('cls' if os.name == 'nt' else 'clear')
@@ -619,7 +615,6 @@ class MonopolyGame:
         player.bot.make_move()
         self.next_player()
     
-    
     def decide_winner(self):
         #print("\n=== GAME REACHED 500 TURNS LIMIT ===")
                 
@@ -640,16 +635,16 @@ class MonopolyGame:
                         total_value += prop.house_price * 5
                 player_values[p.name] = total_value
             
-            print("\n=== FINAL STANDINGS ===")
+            '''print("\n=== FINAL STANDINGS ===")
             for name, value in sorted(player_values.items(), key=lambda x: x[1], reverse=True):
-                print(f"{name}: ${value}")
+                print(f"{name}: ${value}")'''
             
-            print(f"\n{winner.name} WINS THE GAME WITH ${winner.money}!")
+            print(f"{winner.name} WINS THE GAME WITH ${winner.money}!")
             self.game_over = True
             return
     
     def play_game(self):
-        print("\nWelcome to Monopoly!")
+        #print("\nWelcome to Monopoly!")
         
         turns = 0
     
@@ -1129,10 +1124,11 @@ class Bot:
         if self.player.money < 100:
             self.decide_mortgage_property(100 - self.player.money)
 
-
 def main():
     # Global variable to track game statistics
     global game_stats
+    
+    bot_count = int(input("Enter number of bots (0-8): "))
     
     game_stats = {
         "games_played": 0,
@@ -1142,13 +1138,10 @@ def main():
         "turns": {},
         "game_over_500_turns": 0,
     }
-
-    
-    
-        
+  
     for i in range(100):  # play 100 games
         print(f"Game {i+1} of 100")
-        game = MonopolyGame()
+        game = MonopolyGame(bot_count=bot_count)
         game.play_game()
         
         # Update statistics
@@ -1177,8 +1170,8 @@ def main():
         print(f"{player}: {count} bankruptcies ({(count/game_stats['games_played'])*100:.1f}%)")
 
     print(f"\nGames that reached 500 turns: {game_stats['game_over_500_turns']} (){(game_stats['game_over_500_turns']/game_stats['games_played'])*100:.1f}%)")
-    
-    
+
+    print("Statistics for each player:")
 # Run the game
 if __name__ == "__main__":
     try:

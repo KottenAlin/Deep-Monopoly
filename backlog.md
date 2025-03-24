@@ -6,8 +6,11 @@
   - add bot house purchasing compaibility
 - create Neural network
 - Devide the program in file
+  - add the bot in separate folders
 - add house purachsing for bots
 - fixing house selling for bots
+- colorcode the text
+- record all move for statistical purpuse
 
 ## In progress
   - add trading compatibility
