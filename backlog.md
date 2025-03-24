@@ -11,11 +11,14 @@
 
 ## In progress
   - add trading compatibility
+  - Only bot monopoly
+  - Monopoly statistics
 
 ## Done
 - created basic monopoly game
 - implemented basic bot functionality
 - trade initiations for bots
+- basic statistics for multigame simulation
 
 ## Problems/Bugs
 
@@ -23,7 +26,7 @@
 - ~~players getting multiple turns~~
 - ~~players getting multiple turns~~ 
 - ~~jumping over and not displaying chance~~
-  
+- properties not transfering when bankruptsy
 
 
 ## Optimisation

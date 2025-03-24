@@ -5,7 +5,11 @@ import os
 import torch
 import numpy as np
 import torch.nn as nn
-import torch.optim as optim 
+import torch.optim as optim
+
+''' 
+    Monopoly Game for Bot Players with less things #printed for speed
+    '''
 
 class PropertyColor(Enum):
     BROWN = "Brown"
@@ -23,7 +27,7 @@ class PropertyStatus(Enum):
     OWNED = "Owned"
     MORTGAGED = "Mortgaged"
 class Player:
-    def __init__(self, name, token, is_bot=False, game=None):
+    def __init__(self, name, token, is_bot=True, game=None):
         self.name = name
         self.token = token
         self.position = 0
@@ -60,20 +64,14 @@ class Player:
         self.properties.append(property)
         
     def display_status(self, board):
-        print(f"\n{self.name} ({self.token}):")
-        print(f"  Position: {self.position} ({board.spaces[self.position].name if isinstance(board.spaces[self.position], Property) else board.spaces[self.position]})")
-        print(f"  Money: ${self.money}")
-        print(f"  Properties: ", end="")
+
         if self.properties:
             property_list = []
             for p in self.properties:
                 status = " (Mortgaged)" if p.status == PropertyStatus.MORTGAGED else '(' + str(p.houses) + ')'
                 property_list.append(f"{p.name}{status}")
-            print(', '.join(property_list))
-        else:
-            print("None")
-        if self.jail_turns > 0:
-            print(f"  In jail: {self.jail_turns} turns remaining")
+
+
 class Property:
     def __init__(self, name, position, price, color, rents, mortgage_value, house_price=0):
         self.name = name
@@ -123,7 +121,7 @@ class Property:
         return 0
     
     def add_house_or_hotel(self):
-        #print(self.status, self.hotel, self.houses)
+        
         if self.status == PropertyStatus.OWNED and not self.hotel:
             if  self.houses < 4 :
                 self.houses += 1
@@ -276,107 +274,31 @@ class Board:
         if position < 0 or position >= len(self.spaces):
             return None
         return self.spaces[position]
-    
-    def display_board(self, players):
-        # Create a simple text-based board representation
-        board_repr = [
-            "GÅ", "VÄ", "AL", "HO", "IS", "SÖ", "FO", "CH", "GÖ", "RI", "FÄ",
-            "SE", "EL", "OG", "VA", "ÖS", "SG", "AL", "KA", "NA", "FP",
-            "ST", "CH", "KT", "HA", "CS", "VA", "KU", "VV", "SP", "GTF",
-            "GUT", "DR", "AL", "DI", "NO", "CH", "CE", "LX", "NO"
-        ]
-        
-        # Create a visual board
-        board_size = 11
-        board = [[" " for _ in range(board_size)] for _ in range(board_size)]
-        
-        # Fill in the board with property abbreviations
-        # Top row (0-10)
-        for i in range(board_size):
-            board[0][i] = board_repr[i]
-        
-        # Right column (11-19)
-        for i in range(1, board_size - 1):
-            board[i][board_size - 1] = board_repr[10 + i]
-        
-        # Bottom row (20-30), reversed
-        for i in range(board_size):
-            board[board_size - 1][board_size - 1 - i] = board_repr[20 + i]
-        
-        # Left column (31-39), reversed
-        for i in range(1, board_size - 1):
-            board[board_size - 1 - i][0] = board_repr[30 + i]
-        
-        # Place players on the board
-        player_symbols = {}
-        for player in players:
-            if not player.bankrupt:
-                position = player.position
-                x, y = 0, 0
-                
-                if position <= 10:  # Top row
-                    x, y = 0, position
-                elif position <= 20:  # Right column
-                    x, y = position - 10, board_size - 1
-                elif position <= 30:  # Bottom row
-                    x, y = board_size - 1, board_size - 1 - (position - 20)
-                else:  # Left column
-                    x, y = board_size - 1 - (position - 30), 0
-                
-                # Store player token at this position
-                if (x, y) in player_symbols:
-                    player_symbols[(x, y)].append(player.token)
-                else:
-                    player_symbols[(x, y)] = [player.token]
-        # Print the board
-        print("\n" + "=" * (board_size * 5 + 1))
-        for i in range(board_size): # Rows
-            row = "|"
-            for j in range(board_size):
-                cell = board[i][j]
-                if (i, j) in player_symbols:
-                    # Show player tokens if present
-                    tokens = "".join(player_symbols[(i, j)])
-                    row += f"{tokens:4}|"
-                else:
-                    row += f"{cell:4}|"
 
-            print(row)
-            print("-" * (board_size * 5 + 1))
 
 class MonopolyGame:
-    def __init__(self):
-        # Get player count with default value handling
-        player_count_input = input("Enter number of players (default 0): ").strip()
-        player_count = int(player_count_input) if player_count_input else 0
+    def __init__(self, bot_count=2):
         
-        # Get bot count with default value handling
-        bot_count_input = input("Enter number of bots (default 2): ").strip()
-        bot_count = int(bot_count_input) if bot_count_input else 2
+        self.botcount = bot_count
         
-        if bot_count + player_count < 2:
+        if bot_count < 2:
             print("Not enough players to start the game.")
             self.game_over = True
         
         self.board = Board()
-        self.players = self.create_players(player_count, bot_count)
+        self.players = self.create_bots( bot_count)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
     
-    def create_players(self, player_count, bot_count):
+    def create_bots(self, bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
-        #bots = []
-        for i in range(player_count):
-            name = input(f"Enter name for player {i + 1}: ")
-            token = tokens[i % len(tokens)] # Cycle through tokens if more than 8 players are playing
-            players.append(Player(name, token))
+
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
             player = Player(name, token, is_bot=True, game=self)
-            #bots.append(Bot(player))
             players.append(player)
             
         return players
@@ -416,7 +338,7 @@ class MonopolyGame:
                 return True
             else:
                 player.bankrupt = True
-                print(f"\n{player.name} is bankrupt!")
+                (f"\n{player.name} is bankrupt!")
                 self.transfer_assets(player, recipient)
         return False
         
@@ -424,7 +346,7 @@ class MonopolyGame:
         # Transfer remaining money and properties to recipient if any
         if recipient:
             recipient.receive(player.money)
-            print(f"{player.name} transfers ${player.money} to {recipient.name}.")
+            #print(f"{player.name} transfers ${player.money} to {recipient.name}.")
             for prop in player.properties:
                 prop.owner = recipient
                 recipient.properties.append(prop)
@@ -433,7 +355,7 @@ class MonopolyGame:
         
         # Check if game is over (only one player left)
         active_players = [p for p in self.players if not p.bankrupt]
-        print(len(active_players), active_players)
+        #print(len(active_players), active_players)
         if len(active_players) == 1:
             self.game_over = True
             print(f"\n{active_players[0].name} wins the game!")
@@ -444,40 +366,38 @@ class MonopolyGame:
         elif property.status == PropertyStatus.OWNED and property.owner != player:
             # Pay rent
             rent = property.calculate_rent(dice_sum)
-            print(f"\n{player.name} landed on {property.name}, owned by {property.owner.name}.")
-            print(f"Rent due: ${rent}")
+            #print(f"\n{player.name} landed on {property.name}, owned by {property.owner.name}.")
+            #print(f"Rent due: ${rent}")
             
             if player.pay(rent):
                 property.owner.receive(rent)
-                print(f"{player.name} pays ${rent} to {property.owner.name}.")
+                #print(f"{player.name} pays ${rent} to {property.owner.name}.")
             else:
-                print(f"{player.name} doesn't have enough money to pay the rent!")
-                self.display_statistics()
+                #print(f"{player.name} doesn't have enough money to pay the rent!")
+                
                 self.check_bankruptcy(player, rent, property.owner)
                 
     def offer_property_purchase(self, player, property):
-        print(f"\n{player.name} landed on {property.name}.")
-        print(f"Price: ${property.price}")
+        #print(f"\n{player.name} landed on {property.name}.")
+        #print(f"Price: ${property.price}")
         
         # check if player is bot
         
         if player.is_bot:
             choice = 'y' if player.bot.decide_buy_property(property) else 'n'
-        else:
-            choice = input(f"Would you like to buy {property.name} for ${property.price}? (y/n): ").lower()
-        
+
         if choice == 'n' and player.pay(property.price):
-            print(f"{player.name} property is put up on action {property.name}.")
+            #print(f"{player.name} property is put up on action {property.name}.")
             self.handel_auction(property)
         else:
             player.own_property(property)
             property.owner = player
             property.status = PropertyStatus.OWNED
-            print(f"{player.name} now owns {property.name}!")
+            #print(f"{player.name} now owns {property.name}!")
             
     def handel_auction(self, property):
     
-        print(f"\nAuction for {property.name} (Starting price: $1)")
+        #print(f"\nAuction for {property.name} (Starting price: $1)")
         
         # Players who can participate (not bankrupt and not the one who declined)
         eligible_bidders = [p for p in self.players if not p.bankrupt]
@@ -490,29 +410,27 @@ class MonopolyGame:
         
         while len(active_bidders) > 0:
             for bidder in active_bidders.copy():
-                print(f"\nCurrent bid: ${current_bid}")
-                print(f"{bidder.name}'s turn (Money: ${bidder.money})")
+                #print(f"\nCurrent bid: ${current_bid}")
+                #print(f"{bidder.name}'s turn (Money: ${bidder.money})")
                 
                 if bidder.is_bot:
                     choice = bidder.bot.decide_auction_bid(property, current_bid)
-                else:
-                    choice = input(f"{bidder.name}, bid higher than ${current_bid}? Enter amount (0 to pass): $")
-                
+
                 try:
                     bid = int(choice)
                     if bid <= current_bid:
-                        print(f"Bid must be higher than ${current_bid}!")
-                        print(f"{bidder.name} passes.")
+                        #print(f"Bid must be higher than ${current_bid}!")
+                        #print(f"{bidder.name} passes.")
                         active_bidders.remove(bidder)
                     elif bid > bidder.money:
-                        print(f"You don't have enough money for that bid!")
+                        #print(f"You don't have enough money for that bid!")
                         active_bidders.remove(bidder)
                     else:
                         current_bid = bid
                         highest_bidder = bidder
-                        print(f"{bidder.name} bids ${current_bid}!")
+                        #print(f"{bidder.name} bids ${current_bid}!")
                 except ValueError:
-                    print("Invalid input. You pass by default.")
+                    #print("Invalid input. You pass by default.")
                     active_bidders.remove(bidder)
             
             # If only one bidder left, they win
@@ -529,44 +447,47 @@ class MonopolyGame:
                 highest_bidder.own_property(property)
                 property.owner = highest_bidder
                 property.status = PropertyStatus.OWNED
-                print(f"\n{highest_bidder.name} won the auction for {property.name} at ${current_bid}!")
+                #print(f"\n{highest_bidder.name} won the auction for {property.name} at ${current_bid}!")
             else:
-                print(f"{highest_bidder.name} couldn't pay for the property!")
+                return
+                #print(f"{highest_bidder.name} couldn't pay for the property!")
         else:
-            print(f"No one bid on {property.name}. Property remains unowned.")
+            return
+            #print(f"No one bid on {property.name}. Property remains unowned.")
     
     def handle_card(self, player, card_type):
         if card_type == "Chans":
             card = self.board.draw_Chans_card()
-            print(f"\nChans card: {card}")
+            #print(f"\nChans card: {card}")
         else:  # community chest
             card = self.board.draw_Almänning_card()
-            print(f"\nCommunity Chest card: {card}")
+            #print(f"\nCommunity Chest card: {card}")
         
         # Process card effects
         if "Advance to Go" in card:
             player.position = 0
             player.receive(200)
-            print(f"{player.name} advances to Go and collects $200.")
+            #print(f"{player.name} advances to Go and collects $200.")
         elif "Go to Jail" in card:
             player.go_to_jail()
-            print(f"{player.name} goes to jail.")
+            #print(f"{player.name} goes to jail.")
         elif "Collect" in card or "Receive" in card or "get" in card or "matures" in card:
             # Extract amount
             amount = int(''.join(filter(str.isdigit, card)))
             player.receive(amount)
-            print(f"{player.name} receives ${amount}.")
+            #print(f"{player.name} receives ${amount}.")
         elif "Pay" in card or "fee" in card or "fine" in card:
             # Extract amount
             amount = int(''.join(filter(str.isdigit, card)))
             if player.pay(amount):
-                print(f"{player.name} pays ${amount}.")
+                return
+                #print(f"{player.name} pays ${amount}.")
             else:
-                print(f"{player.name} doesn't have enough money!")
+                #print(f"{player.name} doesn't have enough money!")
                 self.check_bankruptcy(player, amount)
         elif "Get Out of Jail Free" in card:
             player.jail_free_cards += 1
-            print(f"{player.name} got a Get Out of Jail Free card.")
+            #print(f"{player.name} got a Get Out of Jail Free card.")
         # Additional card effects would be implemented here
     
     def handle_special_space(self, player, space_name):
@@ -578,346 +499,68 @@ class MonopolyGame:
         elif space_name == "Inkomstskatt":
             tax = min(200, int(player.money * 0.1))  # Pay $200 or 10%, whichever is less
             if player.pay(tax):
-                print(f"{player.name} pays ${tax} in Income Tax.")
+                #print(f"{player.name} pays ${tax} in Income Tax.")
+                return
             else:
-                print(f"{player.name} doesn't have enough money to pay Income Tax!")
+                
+                #print(f"{player.name} doesn't have enough money to pay Income Tax!")
                 self.check_bankruptcy(player, tax)
         elif space_name == "Chans":
             self.handle_card(player, "C")
         elif space_name == "Jail / Just Visiting":
-            print(f"{player.name} is just visiting jail.")
+            return
+            #print(f"{player.name} is just visiting jail.")
         elif space_name == "Fri Parkering":
-            print(f"{player.name} landed on Fri Parkering.")
+            return
+            #print(f"{player.name} landed on Fri Parkering.")
         elif space_name == "Gå i fängelse":
             player.go_to_jail()
-            print(f"{player.name} goes to jail.")
+            #print(f"{player.name} goes to jail.")
         elif space_name == "Lyxskatt":
             if player.pay(100):
-                print(f"{player.name} pays $100 in Luxury Tax.")
+                #print(f"{player.name} pays $100 in Luxury Tax.")
+                return
             else:
-                print(f"{player.name} doesn't have enough money to pay Luxury Tax!")
+                #print(f"{player.name} doesn't have enough money to pay Luxury Tax!")
                 self.check_bankruptcy(player, 100)
     
     def handle_jail(self, player):
         if player.jail_turns > 0:
-            print(f"\n{player.name} is in jail. {player.jail_turns} turns remaining.")
+            
             
             # Options for getting out of jail
             
             if player.is_bot:
                 choice = player.bot.decide_jail_strategy()
-            else:
-                choice = input("What would you like to do?\n1. Roll for doubles\n2. Use Get Out of Jail Free card\n3. Pay $50\nEnter choice: ")
-            
+
             if choice == "2" and player.jail_free_cards > 0:
                 player.jail_free_cards -= 1
                 player.jail_turns = 0
-                print(f"{player.name} used a Get Out of Jail Free card.")
                 return False  # Player can now roll and move
             elif choice == "3":
                 if player.pay(50):
                     player.jail_turns = 0
-                    print(f"{player.name} paid $50 to get out of jail.")
+                    
                     return False
             else:
                 # Roll for doubles
-                print(f"{player.name} rolls to try for doubles...")
+                
                 die1, die2 = self.roll_dice()
-                print(f"Rolled: {die1}, {die2}")
+                
             
             if die1 == die2:
                 player.jail_turns = 0
-                print(f"{player.name} rolled doubles and gets out of jail!")
+                
                 return False  # Player can now move using this roll
             else:
                 player.jail_turns -= 1
                 if player.jail_turns == 0:
                     player.pay(50)  # Pay fine after third turn
-                    print(f"{player.name} paid $50 after third turn in jail.")
+                    #print(f"{player.name} paid $50 after third turn in jail.")
                 return True  # Player's turn ends
         
         return False  # Not in jail
-    
-    def property_management(self, player):
-        
-        if not player.properties:
-            print("\nYou don't own any properties.")
-            return
-        
-        print("\nYour properties:")
-        for i, prop in enumerate(player.properties):
-            status = "Mortgaged" if prop.status == PropertyStatus.MORTGAGED else "Owned"
-            house_info = ""
-            if hasattr(prop, 'houses') and prop.houses > 0:
-                house_info = f", {prop.houses} houses"
-            elif hasattr(prop, 'hotel') and prop.hotel:
-                house_info = ", 1 hotel"
-            print(f"{i+1}. {prop.name} ({status}{house_info}) - Value: ${prop.price}")
-        
-        choice = input("\nWhat would you like to do?\n1. Mortgage a property\n2. Unmortgage a property\n3. Buy houses/hotels\n4. Sell houses/hotels\n5. Trade Property\nEnter choice: ")
-        
-        # Using a dictionary as a switch case
-        actions = {
-            "1": lambda: self.mortage_property(player),
-            "2": lambda: self.unmortage_property(player),
-            "3": lambda: self.buy_houses(player),
-            "4": lambda: self.sell_houses(player),
-            "5": lambda: self.trade_property(player) 
-        }
-        
-        # Execute the selected action if it exists
-        if choice in actions:
-            actions[choice]()
-    
-    def trade_property(self, player):
-    
-        # Show all other non-bankrupt players
-        available_players = [p for p in self.players if p != player and not p.bankrupt]
-        
-        if not available_players:
-            print("No players available to trade with.")
-            return
-        
-        # Select player to trade with
-        print("\nSelect a player to trade with:")
-        for i, p in enumerate(available_players):
-            print(f"{i+1}. {p.name}")
-        
-        player_idx = int(input("Enter player number (or 0 to cancel): ")) - 1
-        if player_idx < 0 or player_idx >= len(available_players):
-            return
-        
-        trade_partner = available_players[player_idx]
-        
-        # Show your properties
-        if not player.properties:
-            print("You don't have any properties to offer.")
-            return
-        
-        print("\nYour properties to offer:")
-        for i, prop in enumerate(player.properties):
-            status = "Mortgaged" if prop.status == PropertyStatus.MORTGAGED else "Owned"
-            print(f"{i+1}. {prop.name} ({status}) - Value: ${prop.price}")
-        
-        # Select property to offer
-        offer_idx = int(input("Select property to offer (or 0 to cancel): ")) - 1
-        if offer_idx < 0 or offer_idx >= len(player.properties):
-            return
-        
-        offer_property = player.properties[offer_idx]
-        
-        # Show partner's properties
-        if not trade_partner.properties:
-            print(f"{trade_partner.name} doesn't have any properties to trade.")
-            return
-        
-        print(f"\n{trade_partner.name}'s properties:")
-        for i, prop in enumerate(trade_partner.properties):
-            status = "Mortgaged" if prop.status == PropertyStatus.MORTGAGED else "Owned"
-            print(f"{i+1}. {prop.name} ({status}) - Value: ${prop.price}")
-        
-        # Select property to request
-        request_idx = int(input("Select property to request (or 0 to cancel): ")) - 1
-        if request_idx < 0 or request_idx >= len(trade_partner.properties):
-            return
-        
-        request_property = trade_partner.properties[request_idx]
-        
-        # Ask for cash adjustment
-        print("\nWould you like to include cash in the trade?")
-        cash_option = input("1. You pay cash\n2. Request cash\n3. No cash involved\nEnter choice: ")
-        
-        cash_amount = 0
-        if cash_option == "1":
-            cash_amount = int(input(f"How much will you pay? (You have ${player.money}): $"))
-            if cash_amount > player.money:
-                print("You don't have that much money.")
-                return
-        elif cash_option == "2":
-            cash_amount = -int(input(f"How much will you request? ({trade_partner.name} has ${trade_partner.money}): $"))
-            if -cash_amount > trade_partner.money:
-                print(f"{trade_partner.name} doesn't have that much money.")
-                return
-        
-        # If bot, automatically decide
-        if trade_partner.is_bot:
-            # Simple bot logic for deciding trades
-            accept = trade_partner.bot.decide_trade(request_property, offer_property, -cash_amount)
-            
-            if accept:
-                # Execute the trade
-                player.properties.remove(offer_property)
-                trade_partner.properties.remove(request_property)
-                
-                player.properties.append(request_property)
-                trade_partner.properties.append(offer_property)
-                
-                offer_property.owner = trade_partner
-                request_property.owner = player
-                
-                if cash_amount > 0:
-                    player.pay(cash_amount)
-                    trade_partner.receive(cash_amount)
-                elif cash_amount < 0:
-                    trade_partner.pay(-cash_amount)
-                    player.receive(-cash_amount)
-                
-                print(f"\nTrade accepted! You traded {offer_property.name} for {request_property.name}.")
-                if cash_amount != 0:
-                    print(f"{'You paid' if cash_amount > 0 else 'You received'} ${abs(cash_amount)}.")
-            else:
-                print(f"\n{trade_partner.name} rejected your trade offer.")
-        else:
-            # Show trade summary to human player
-            print(f"\nTrade Offer to {trade_partner.name}:")
-            print(f"You offer: {offer_property.name}")
-            print(f"You request: {request_property.name}")
-            if cash_amount > 0:
-                print(f"You will pay: ${cash_amount}")
-            elif cash_amount < 0:
-                print(f"You will receive: ${-cash_amount}")
-            
-            accept = input(f"\n{trade_partner.name}, do you accept this trade? (y/n): ").lower() == 'y'
-            
-            if accept:
-                # Execute the trade
-                player.properties.remove(offer_property)
-                trade_partner.properties.remove(request_property)
-                
-                player.properties.append(request_property)
-                trade_partner.properties.append(offer_property)
-                
-                offer_property.owner = trade_partner
-                request_property.owner = player
-                
-                if cash_amount > 0:
-                    player.pay(cash_amount)
-                    trade_partner.receive(cash_amount)
-                elif cash_amount < 0:
-                    trade_partner.pay(-cash_amount)
-                    player.receive(-cash_amount)
-                
-                print("\nTrade completed successfully!")
-            else:
-                print("\nTrade rejected.")
 
-    def mortage_property(self, player):
-        prop_idx = int(input("Enter property number to mortgage: ")) - 1
-        if 0 <= prop_idx < len(player.properties):
-            prop = player.properties[prop_idx]
-            if prop.status != PropertyStatus.MORTGAGED and prop.houses == 0 and not prop.hotel:
-                mortgage_value = prop.mortgage()
-                player.receive(mortgage_value)
-                print(f"Mortgaged {prop.name} for ${mortgage_value}.")
-            else:
-                print("Cannot mortgage this property. Sell houses first or it's already mortgaged.")
-        else:
-            print("Invalid property number.")
-    
-    def unmortage_property(self, player):
-        prop_idx = int(input("Enter property number to unmortgage: ")) - 1
-        if 0 <= prop_idx < len(player.properties):
-            prop = player.properties[prop_idx]
-            if prop.status == PropertyStatus.MORTGAGED:
-                unmortgage_cost = prop.unmortgage()
-                if player.pay(unmortgage_cost):
-                    print(f"Unmortgaged {prop.name} for ${unmortgage_cost}.")
-                else:
-                    print("Not enough money to unmortgage this property.")
-                    prop.status = PropertyStatus.MORTGAGED  # Revert back if can't pay
-            else:
-                print("This property is not mortgaged.")
-        else:
-            print("Invalid property number.")
-    
-    def buy_houses(self, player):
-        # Group properties by color
-        properties_by_color = {}
-        for prop in player.properties:
-            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                if prop.color not in properties_by_color:
-                    properties_by_color[prop.color] = []
-                properties_by_color[prop.color].append(prop)
-        
-        # Find color groups where player owns all properties
-        complete_sets = {}
-        for color, props in properties_by_color.items():
-            color_count = sum(1 for p in self.board.spaces if isinstance(p, Property) and p.color == color)
-            if len(props) == color_count:
-                complete_sets[color] = props
-        
-        if not complete_sets:
-            print("You don't have any complete property sets to build on.")
-            return
-        
-        print("\nYou can build on these property sets:")
-        for i, (color, props) in enumerate(complete_sets.items()):
-            print(f"{i+1}. {color.value}")
-        
-        set_idx = int(input("Choose a set to build on (or 0 to cancel): ")) - 1
-        if set_idx == -1:
-            return
-        if 0 <= set_idx < len(complete_sets):
-            chosen_color = list(complete_sets.keys())[set_idx]
-            props = complete_sets[chosen_color]
-            
-
-            
-            while True:
-                #os.system('cls' if os.name == 'nt' else 'clear')
-                # Display properties in the set
-                print(f"\nProperties in {chosen_color.value} set:")
-                for i, prop in enumerate(props):
-                    house_info = f"{prop.houses} houses" if prop.houses > 0 else "no houses"
-                    hotel_info = ", has hotel" if prop.hotel else ""
-                    print(f"{i+1}. {prop.name} - {house_info}{hotel_info}, house cost: ${prop.house_price}")
-                
-                try:
-                    prop_idx = int(input("Choose a property to build on (or 0 to cancel): ")) - 1
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
-                    continue
-                
-                if prop_idx == -1: # Cancel if 0
-                    return
-                if 0 <= prop_idx < len(props):
-                    prop = props[prop_idx]
-                    
-                    # Check if player can build evenly (difference between houses should be at most 1)
-                    min_houses = min(p.houses for p in props)
-                    if prop.houses > min_houses and not all(p.houses == min_houses for p in props if p != prop):
-                        print("You must build evenly. Build on properties with fewer houses first.")
-                    
-                    # Check if property already has a hotel
-                    if prop.hotel:
-                        print("This property already has a hotel. No more buildings possible.")
-                    
-                    # Determine if buying a house or hotel
-                    if prop.houses == 4:
-                        # Buy a hotel
-                        if player.pay(prop.house_price):
-                            if prop.add_house_or_hotel():
-                                print(f"Added a hotel to {prop.name}!")
-                            else:
-                                player.receive(prop.house_price)  # Refund if hotel couldn't be added
-                                print("Could not add a hotel to this property.")
-                        else:
-                            print(f"Not enough money to buy a hotel (${prop.house_price}).")
-                    else:
-                        # Buy a house
-                        if player.pay(prop.house_price):
-                            if prop.add_house_or_hotel():
-                                print(f"Added a house to {prop.name}!")
-                            else:
-                                player.receive(prop.house_price)  # Refund if house couldn't be added
-                                print("Could not add a house to this property.")
-                        else:
-                            print(f"Not enough money to buy a house (${prop.house_price}).")
-                else:
-                    print("Invalid property number.")
-        else:
-            print("Invalid set number.")
-    
     def build_house_bot(self, player):
         ''' build house for bot '''
         property = player.bot.decide_house_purchases()
@@ -925,62 +568,14 @@ class MonopolyGame:
             if property and type:
                 cost = property.house_price
                 if player.pay(cost):
-                        print(f"Added a house/hotel to {property.name}!")
+                        #print(f"Added a house/hotel to {property.name}!")
                         property.add_house_or_hotel()
                     # Check if property already has a hotel
                 else:
-                    print(f"Not enough money to buy a {type} (${cost}).")
+                    #print(f"Not enough money to buy a {type} (${cost}).")
+                    return
     
-    def sell_houses(self, player):
-        # Find properties with houses or hotels
-        props_with_buildings = [p for p in player.properties if p.houses > 0 or p.hotel]
-        
-        if not props_with_buildings:
-            print("You don't have any properties with houses or hotels.")
-            return
-        
-        print("\nYour properties with buildings:")
-        for i, prop in enumerate(props_with_buildings):
-            if prop.hotel:
-                print(f"{i+1}. {prop.name} - Hotel (sell value: ${prop.house_price // 2})")
-            else:
-                print(f"{i+1}. {prop.name} - {prop.houses} houses (sell value: ${prop.house_price // 2} each)")
-        
-        prop_idx = int(input("Choose a property to sell buildings from (or 0 to cancel): ")) - 1
-        if prop_idx == -1:
-            return
-        if 0 <= prop_idx < len(props_with_buildings):
-            prop = props_with_buildings[prop_idx]
-            
-            # Find all properties in same color group
-            same_color_props = [p for p in player.properties if p.color == prop.color]
-            
-            # Check if selling would create uneven distribution (difference > 1)
-            if prop.hotel:
-                sell_hotel = input("Sell hotel? (y/n): ").lower() == 'y'
-                if sell_hotel:
-                    if prop.remove_hotel():
-                        player.receive(prop.house_price // 2)
-                        print(f"Sold hotel from {prop.name} for ${prop.house_price // 2}.")
-                    else:
-                        print("Could not sell hotel.")
-            else:
-                num_to_sell = int(input(f"How many houses to sell (1-{prop.houses})? "))
-                if 1 <= num_to_sell <= prop.houses:
-                    # Check if selling would violate even build rule
-                    max_houses = max(p.houses for p in same_color_props)
-                    if prop.houses == max_houses or prop.houses - num_to_sell >= max_houses - 1:
-                        for _ in range(num_to_sell):
-                            if prop.remove_house():
-                                player.receive(prop.house_price // 2)
-                        print(f"Sold {num_to_sell} houses from {prop.name} for ${(prop.house_price // 2) * num_to_sell}.")
-                    else:
-                        print("Cannot create uneven building distribution. Sell houses from other properties first.")
-                else:
-                    print("Invalid number of houses.")
-        else:
-            print("Invalid property number.")
-    
+
     def play_turn(self):
         player = self.players[self.current_player_idx]
         #os.system('cls' if os.name == 'nt' else 'clear')
@@ -989,7 +584,6 @@ class MonopolyGame:
             self.next_player()
             return
         
-        self.board.display_board(self.players)
         player.display_status(self.board)
         
         # Check if player is in jail
@@ -997,52 +591,20 @@ class MonopolyGame:
         if in_jail:
             self.next_player()
             return
-        
-        # Player's turn menu
-        while not player.is_bot:
-            print("\nTurn Options:")
-            print("1. Roll dice")
-            print("2. Manage properties")
-            print("3. Show all properties")
-            choice = input("Enter choice (1-3): ")
-            
-            if choice == "2":
-                self.property_management(player)
-            elif choice == "3":
-                self.display_all_properties()
-                continue
-            else:
-                break
 
         # Roll dice and move
         die1, die2 = self.roll_dice()
         dice_sum = die1 + die2
         
-        print(f"\n{player.name} rolls: {die1}, {die2} (Total: {dice_sum})")
-        
-        '''is_doubles = die1 == die2
-        
-        if is_doubles:
-            self.doubles_count += 1
-            print("Doubles!")
-            
-            if self.doubles_count == 3:
-                print("Third doubles in a row! Going to jail.")
-                player.go_to_jail()
-                self.doubles_count = 0
-                self.next_player()
-                return
-        '''
         
         # Move player
         passed_go = player.move(dice_sum)
         if passed_go:
             player.receive(200)
-            print(f"{player.name} passed GO and collected $200.")
+            
         
         # Handle landing on space
         space = self.board.get_property_at(player.position)
-        print(f"{player.name} landed on {space.name if isinstance(space, Property) else space}")
         
         if isinstance(space, Property):
             self.handle_property_landing(player, space, dice_sum)
@@ -1053,36 +615,13 @@ class MonopolyGame:
         if self.game_over:
             return
         
-        # If doubles, player goes again unless they went to jail
-        '''if is_doubles and player.jail_turns == 0:
-            print(f"{player.name} rolled doubles and goes again!")
-        else:
-            self.next_player() '''
-        
-        if not player.is_bot:
-            input("Press Enter to continue...")
-        else:
-            player.bot.make_move()
+
+        player.bot.make_move()
         self.next_player()
     
-    def display_all_properties(self):
-        print("\nAll Properties on the Board:")
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                if space.owner:
-                    status = f"Owned by {space.owner.name}"
-                    if space.status == PropertyStatus.MORTGAGED:
-                        status += " (Mortgaged)"
-                    elif hasattr(space, 'houses') and space.houses > 0:
-                        status += f" ({space.houses} houses)"
-                    elif hasattr(space, 'hotel') and space.hotel:
-                        status += " (hotel)"
-                else:
-                    status = "Unowned"
-                print(f"{space.name} - ${space.price} - {status}")
     
     def decide_winner(self):
-        print("\n=== GAME REACHED 500 TURNS LIMIT ===")
+        #print("\n=== GAME REACHED 500 TURNS LIMIT ===")
                 
         # Find the player with the most money
         active_players = [p for p in self.players if not p.bankrupt]
@@ -1121,16 +660,17 @@ class MonopolyGame:
             self.play_turn()
             
             if turns >= 500:
+                game_stats["game_over_500_turns"] += 1
                 self.decide_winner()
             
             if turns % 100 == 0 and turns != 0:
-                input("Display statistics? (y/n): ").lower()
+                '''input("Display statistics? (y/n): ").lower()
                 self.display_statistics() # Display statistics if player chooses to
-                input("Press enter to continue...")
+                input("Press enter to continue...")'''
             turns += 1
-            #time.sleep(1)  # Small pause between turns
-        input("display statistics... ")
-        self.display_statistics()
+            
+        #input("display statistics... ")
+        #self.display_statistics()
         
     def display_statistics(self):
         # Display a comprehensive property and building report
@@ -1157,7 +697,7 @@ class MonopolyGame:
                             color_groups[space.color] = []
                         color_groups[space.color].append(space)
 
-                # Print properties by color group
+                # print properties by color group
                 for color, properties in color_groups.items():
                     print(f"\n{color.value} Properties:")
                     for prop in properties:
@@ -1173,7 +713,7 @@ class MonopolyGame:
                         rent_info = f", Current rent: ${prop.calculate_rent()}" if prop.owner else ""
                         print(f"  {prop.name} - ${prop.price} - {owner_info}{status_info}{building_info}{rent_info}")
 
-                # Print player property summaries
+                #print player property summaries
                 print("\nPlayer Property Summaries:")
                 for player in active_players:
                     property_count = len(player.properties)
@@ -1373,24 +913,11 @@ class Bot:
                 elif value_diff < 0:  # We should receive cash
                     cash_amount = max(value_diff, -target_owner.money * 0.7)  # Don't ask for more than 70% of their money
                 
-                # Make the trade offer
-                print(f"\n{self.player.name} offers {target_owner.name} a trade:")
-                print(f"Offering: {offer_prop.name}")
-                print(f"Requesting: {target_prop.name}")
-                
-                if cash_amount > 0:
-                    print(f"{self.player.name} offers ${int(cash_amount)} cash")
-                elif cash_amount < 0:
-                    print(f"{self.player.name} requests ${int(-cash_amount)} cash")
-                
                 # For AI opponents, use their decide_trade method
                 if target_owner.is_bot:
                     bot = target_owner.bot
                     accepted = bot.decide_trade(target_prop, offer_prop, -cash_amount)
-                else:
-                    # For human players, ask for input
-                    accepted = input(f"\n{target_owner.name}, do you accept this trade? (y/n): ").lower() == 'y'
-                
+
                 if accepted:
                     # Execute the trade
                     self.player.properties.remove(offer_prop)
@@ -1409,10 +936,10 @@ class Bot:
                         target_owner.pay(int(-cash_amount))
                         self.player.receive(int(-cash_amount))
                     
-                    print(f"\nTrade completed! {self.player.name} traded {offer_prop.name} for {target_prop.name}.")
+                    #print(f"\nTrade completed! {self.player.name} traded {offer_prop.name} for {target_prop.name}.")
                     if cash_amount != 0:
                         who_paid = f"{self.player.name} paid" if cash_amount > 0 else f"{target_owner.name} paid"
-                        print(f"{who_paid} ${int(abs(cash_amount))}.")
+                        #print(f"{who_paid} ${int(abs(cash_amount))}.")
                     
                     return True  # Successfully made a trade
         
@@ -1528,7 +1055,7 @@ class Bot:
             properties_to_mortgage.append(prop)
             raised_amount += prop.mortgage_value
             if raised_amount >= amount_needed:
-                print(f"\n mortgaging properties to pay off debts.")
+                #print(f"\n mortgaging properties to pay off debts.")
                 for prop in properties_to_mortgage:
                     prop.mortgage(self.player)
                 return True
@@ -1570,7 +1097,7 @@ class Bot:
                 if owned_in_color == color_counts.get(prop.color, 0) and mortgaged_in_color == 1:
                     unmortgage_cost = prop.unmortgage()
                     if unmortgage_cost <= self.player.money - 500:  # Keep some reserves
-                        print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost} to complete a set")
+                        #print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost} to complete a set")
                         self.player.pay(unmortgage_cost)
                         return prop
         
@@ -1579,7 +1106,7 @@ class Bot:
             for prop in mortgaged_props:
                 unmortgage_cost = prop.unmortgage()
                 if unmortgage_cost <= self.player.money - 700:  # Keep larger reserves
-                    print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost}")
+                    #print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost}")
                     self.player.pay(unmortgage_cost)
                     return prop
         
@@ -1592,148 +1119,72 @@ class Bot:
             return self.decide_jail_strategy()
             
         property = self.decide_house_purchases()
-        if property:
-            print(property.name)
+        '''if property:
+            #print(property.name)'''
         self.game.build_house_bot(self.player)
-        print(self.initiate_trade())
+        #print(self.initiate_trade())
         self.decide_unmortgage_property()
         
         # If low on money, consider mortgaging properties
         if self.player.money < 100:
             self.decide_mortgage_property(100 - self.player.money)
 
-class NeuralNetwork(nn.Module):
-    def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
-        super(NeuralNetwork, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
-        )
-        
-    def forward(self, x):
-        return self.model(x)
 
-class NeuralBot(Bot):
-    def __init__(self, player):
-        super().__init__(player)
-        self.model = NeuralNetwork()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-        self.criterion = nn.MSELoss()
-        self.memory = []  # For experience replay
-        self.epsilon = 0.3  # For exploration vs exploitation
-        
-    def _get_state(self, board, players):
-        """Create a state representation for the neural network"""
-        state = []
-        
-        # Player information
-        state.append(self.player.money / 2000.0)  # Normalized money
-        state.append(self.player.position / 40.0)  # Normalized position
-        state.append(1.0 if self.player.jail_turns > 0 else 0.0)  # In jail?
-        
-        # Property ownership (one-hot encoding for each property)
-        for i in range(40):
-            space = board.spaces[i]
-            if isinstance(space, Property):
-                # 1 if player owns it, 0 otherwise
-                state.append(1.0 if space in self.player.properties else 0.0)
-                # 1 if property is mortgaged, 0 otherwise
-                state.append(1.0 if space in self.player.properties and space.status == PropertyStatus.MORTGAGED else 0.0)
-                # Number of houses normalized
-                if space in self.player.properties and hasattr(space, 'houses'):
-                    state.append(space.houses / 5.0)
-                else:
-                    state.append(0.0)
-            else:
-                # Not a property, add zeros as placeholders
-                state.append(0.0)
-                state.append(0.0)
-                state.append(0.0)
-        
-        # Add some opponent information
-        other_players = [p for p in players if p != self.player and not p.bankrupt]
-        avg_money = sum(p.money for p in other_players) / max(1, len(other_players))
-        state.append(avg_money / 2000.0)  # Normalized average opponent money
-        
-        # Pad or truncate to match input_dim
-        while len(state) < 100:
-            state.append(0.0)
-        
-        return torch.tensor(state, dtype=torch.float32)
+def main():
+    # Global variable to track game statistics
+    global game_stats
     
-    def decide_buy_property(self, property):
-        """Use neural network to decide whether to buy property"""
-        if random.random() < self.epsilon:  # Exploration
-            return super().decide_buy_property(property)
-        
-        # Get state and predict
-        state = self._get_state(None, [])  # Need to implement proper state capture
-        prediction = self.model(state)
-        buy_score = prediction[0].item()  # First output neuron for buying property
-        
-        return buy_score > 0.5
-    
-    def decide_auction_bid(self, property, current_bid):
-        """Use neural network to decide auction bid"""
-        if random.random() < self.epsilon:  # Exploration
-            return super().decide_auction_bid(property, current_bid)
-        
-        # Get state and predict
-        state = self._get_state(None, [])
-        prediction = self.model(state)
-        bid_percentage = prediction[1].item()  # Second output for bid percentage
-        
-        # Bid between current_bid and property.price * bid_percentage
-        max_bid = min(self.player.money * 0.8, property.price * 1.5)
-        new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
-        
-        return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
-    
-    def learn_from_experience(self, old_state, action, reward, new_state):
-        """Store experience and learn from it"""
-        self.memory.append((old_state, action, reward, new_state))
-        
-        # Only train after accumulating some experiences
-        if len(self.memory) > 100:
-            # Sample batch from memory
-            batch = random.sample(self.memory, min(32, len(self.memory)))
-            
-            for old_s, act, rew, new_s in batch:
-                # Simple Q-learning update
-                target = rew
-                if new_s is not None:  # Not a terminal state
-                    target += 0.95 * torch.max(self.model(new_s)).item()
-                
-                # Get current prediction and update the action's value
-                current = self.model(old_s)
-                target_f = current.clone()
-                target_f[0, act] = target
-                
-                # Train the model
-                self.optimizer.zero_grad()
-                loss = self.criterion(current, target_f)
-                loss.backward()
-                self.optimizer.step()
-    
-    def save_model(self, path="neural_bot_model.pth"):
-        """Save the neural network model"""
-        torch.save(self.model.state_dict(), path)
-    
-    def load_model(self, path="neural_bot_model.pth"):
-        """Load a previously trained model"""
-        self.model.load_state_dict(torch.load(path))
-        self.model.eval()
+    game_stats = {
+        "games_played": 0,
+        "average_turns": 0,
+        "wins_by_player": {},  # Will track number of wins per player
+        "bankrupt_count": {},  # Will track number of bankruptcies per player
+        "turns": {},
+        "game_over_500_turns": 0,
+    }
 
+    
+    
+        
+    for i in range(100):  # play 100 games
+        print(f"Game {i+1} of 100")
+        game = MonopolyGame()
+        game.play_game()
+        
+        # Update statistics
+        game_stats["games_played"] += 1
+        
+        # Find the winner
+        active_players = [p for p in game.players if not p.bankrupt]
+        if active_players:
+            winner = active_players[0].name
+            game_stats["wins_by_player"][winner] = game_stats["wins_by_player"].get(winner, 0) + 1
+        
+        # Track bankruptcies
+        for player in game.players:
+            if player.bankrupt:
+                game_stats["bankrupt_count"][player.name] = game_stats["bankrupt_count"].get(player.name, 0) + 1
+    
+    #print overall statistics
+    print("\n===== OVERALL GAME STATISTICS =====")
+    print(f"Total games played: {game_stats['games_played']}")
+    print("\nWins by player:")
+    for player, wins in game_stats["wins_by_player"].items():
+        print(f"{player}: {wins} wins ({(wins/game_stats['games_played'])*100:.1f}%)")
+    
+    print("\nBankruptcy rate:")
+    for player, count in game_stats["bankrupt_count"].items():
+        print(f"{player}: {count} bankruptcies ({(count/game_stats['games_played'])*100:.1f}%)")
+
+    print(f"\nGames that reached 500 turns: {game_stats['game_over_500_turns']} (){(game_stats['game_over_500_turns']/game_stats['games_played'])*100:.1f}%)")
+    
+    
 # Run the game
 if __name__ == "__main__":
     try:
-        game = MonopolyGame()
-        game.play_game()
+        main()
     except KeyboardInterrupt:
         os.system('cls' if os.name == 'nt' else 'clear')
         print("\nGame cancelled by user.")
         print("Monopoly game ended. Thank you for playing!")
-        #print the stats for everyone
+        ##print the stats for everyone
