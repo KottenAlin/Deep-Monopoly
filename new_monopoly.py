@@ -583,15 +583,16 @@ class MonopolyGame:
         else:
             choice = input(f"{self.colors['prompt']}Would you like to buy {property.name} for ${property.price}? (y/n): {self.colors['reset']}").lower()
         
-        if choice == 'n' and player.pay(property.price):
-            print(f"{self.colors['warning']}{player.name} property is put up on action {self.colors['property']}{property.name}.")
-            self.handel_auction(property)
-        else:
+        if choice != 'n' and player.pay(property.price): # Player declined to buy the property 
             player.own_property(property)
             property.owner = player
             property.status = PropertyStatus.OWNED
             print(f"{self.colors['success']}{player.name} now owns {self.colors['property']}{property.name}!")
             
+        else:
+            print(f"{self.colors['warning']}{player.name} declined to buy the property.")
+            # Start auction
+            self.handel_auction(property)
     def handel_auction(self, property):
     
         print(f"\n{self.colors['title']}AUCTION for {self.colors['property']}{property.name} (Starting price: {self.colors['money']}$1)")

@@ -10,6 +10,8 @@ import torch.optim as optim
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
     '''
+    
+num_games = 100
 
 class PropertyColor(Enum):
     BROWN = "Brown"
@@ -27,7 +29,7 @@ class PropertyStatus(Enum):
     OWNED = "Owned"
     MORTGAGED = "Mortgaged"
 class Player:
-    def __init__(self, name, token, is_bot=True, game=None):
+    def __init__(self, name, token, is_bot=True, game=None, risk_tolerance=None):
         self.name = name
         self.token = token
         self.position = 0
@@ -37,7 +39,7 @@ class Player:
         self.jail_free_cards = 0
         self.bankrupt = False
         self.is_bot = is_bot
-        self.bot = Bot(self, game=game)
+        self.bot = Bot(self, game=game, risk_tolerance=risk_tolerance) if is_bot else None
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -275,7 +277,7 @@ class Board:
         return self.spaces[position]
 
 class MonopolyGame:
-    def __init__(self, bot_count=2):
+    def __init__(self, bot_count=2, risk_tolerances=[]):
         
         self.botcount = bot_count
         
@@ -284,19 +286,19 @@ class MonopolyGame:
             self.game_over = True
         
         self.board = Board()
-        self.players = self.create_bots( bot_count)
+        self.players = self.create_bots(bot_count, risk_tolerances)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
     
-    def create_bots(self, bot_count):
+    def create_bots(self, bot_count, risk_tolerances=[]):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
 
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
-            player = Player(name, token, is_bot=True, game=self)
+            player = Player(name, token, is_bot=True, game=self, risk_tolerance=risk_tolerances[i] if risk_tolerances else None)
             players.append(player)
             
         return players
@@ -329,6 +331,7 @@ class MonopolyGame:
         if total_assets < amount_due:
             #rint(f"\n{player.name} is bankrupt!")
             player.bankrupt = True
+            game_stats["bankrupt_count"][player.name] += 1
             self.transfer_assets(player, recipient)
         else:
             if player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
@@ -336,6 +339,7 @@ class MonopolyGame:
                 return True
             else:
                 player.bankrupt = True
+                game_stats["bankrupt_count"][player.name] += 1
                 #(f"\n{player.name} is bankrupt!")
                 self.transfer_assets(player, recipient)
         return False
@@ -357,6 +361,7 @@ class MonopolyGame:
         if len(active_players) == 1:
             self.game_over = True
             print(f"{active_players[0].name} wins the game!")
+            game_stats["wins_by_player"][active_players[0].name] += 1
     
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -640,6 +645,7 @@ class MonopolyGame:
                 print(f"{name}: ${value}")'''
             
             print(f"{winner.name} WINS THE GAME WITH ${winner.money}!")
+            game_stats["wins_by_player"][winner.name] += 1
             self.game_over = True
             return
     
@@ -726,24 +732,31 @@ class MonopolyGame:
                         print(f"{player.name} is bankrupt.")
 
 class Bot:
-    def __init__(self, player, game=None): # Bot class 
+    def __init__(self, player, game=None, risk_tolerance=None): # Bot class 
         self.player = player
         self.game = game
-        self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
+        if not risk_tolerance:
+            self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
+        else:
+            self.risk_tolerance = risk_tolerance
+        #print(self.risk_tolerance)
         
     def decide_buy_property(self, property):
         """Decide whether to buy a property."""
         # Always buy if plenty of money
-        if self.player.money > property.price * 3:
+        #print(f"player name: {self.player.name} risk tolerance: {self.risk_tolerance}")
+        if self.player.money > (property.price * 3)/(0.1 + self.risk_tolerance):
+            #print(f"{self.player.name} buys1 {property.name} for ${property.price}.")
             return True
         
         # More likely to buy railroads and utilities
         if property.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-            return random.random() < 0.8
+            return random.random() < 0.8*self.risk_tolerance
         
         # Check if we already own properties of this color
         same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
         if same_color_count > 0:
+            #print(f"{self.player.name} buys2 {property.name} for ${property.price}.")
             return random.random() < 0.7 + (0.1 * same_color_count)  # More likely if we have others
         
         # Base decision on risk tolerance and money available
@@ -1138,32 +1151,33 @@ def main():
         "turns": {},
         "game_over_500_turns": 0,
     }
-  
+    
+    #initiate risk tolerance for each bot
+    risk_tolerances = [10, 0.01, 1, 0.5]
+    
+    for i in range(bot_count):
+        #risk_tolerance = random.random()
+        #risk_tolerances.append(risk_tolerance)
+        #print(f"Bot {i+1} risk tolerance: {risk_tolerance:.2f}")
+        game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot
+        game_stats["bankrupt_count"][f"Bot {i+1}"] = 0  # Initialize bankrupt count for each bot
+    
     for i in range(100):  # play 100 games
         print(f"Game {i+1} of 100")
-        game = MonopolyGame(bot_count=bot_count)
+        game = MonopolyGame(bot_count=bot_count, risk_tolerances=risk_tolerances)
         game.play_game()
-        
+
         # Update statistics
         game_stats["games_played"] += 1
-        
-        # Find the winner
-        active_players = [p for p in game.players if not p.bankrupt]
-        if active_players:
-            winner = active_players[0].name
-            game_stats["wins_by_player"][winner] = game_stats["wins_by_player"].get(winner, 0) + 1
-        
-        # Track bankruptcies
-        for player in game.players:
-            if player.bankrupt:
-                game_stats["bankrupt_count"][player.name] = game_stats["bankrupt_count"].get(player.name, 0) + 1
-    
+
     #print overall statistics
     print("\n===== OVERALL GAME STATISTICS =====")
     print(f"Total games played: {game_stats['games_played']}")
     print("\nWins by player:")
     for player, wins in game_stats["wins_by_player"].items():
+        player_index = int(player.split()[1]) - 1  # Extract the bot number from name and adjust to 0-based index
         print(f"{player}: {wins} wins ({(wins/game_stats['games_played'])*100:.1f}%)")
+        print(f"Risk tolerance: {risk_tolerances[player_index]:.2f}")
     
     print("\nBankruptcy rate:")
     for player, count in game_stats["bankrupt_count"].items():

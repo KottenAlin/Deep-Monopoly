@@ -8,7 +8,8 @@
 - record all move for statistical purpus
 - make conservative and agressive bots
 
-- implement 
+- implement neural network
+- add paremeters to bot
 
 ## In progress
 
@@ -27,18 +28,19 @@
 - Only bot monopoly
 - Monopoly statistics
 
+
 ## Problems/Bugs
 
 - ~~board not clearning after turn~~
 - ~~players getting multiple turns~~
 - ~~players getting multiple turns~~ 
 - ~~jumping over and not displaying chance~~
-- properties not transfering when bankruptsy
+- ~~properties not transfering when bankruptsy~~
 
 
 ## Optimisation
  - Use less cluttered code 
- - insilaise the bot fewer times
- - do not display everything when the bot plays
+ - ~~insilaise the bot fewer times~~
+ - ~~do not display everything when the bot plays~~
 
 
