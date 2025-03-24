@@ -23,7 +23,7 @@ class PropertyStatus(Enum):
     OWNED = "Owned"
     MORTGAGED = "Mortgaged"
 class Player:
-    def __init__(self, name, token, is_bot=False):
+    def __init__(self, name, token, is_bot=False, game=None):
         self.name = name
         self.token = token
         self.position = 0
@@ -33,6 +33,7 @@ class Player:
         self.jail_free_cards = 0
         self.bankrupt = False
         self.is_bot = is_bot
+        self.bot = Bot(self, game=game)
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -179,7 +180,7 @@ class Board:
         # Red properties
         spaces[21] = Property("Strandvägen", 21, 220, PropertyColor.RED, [18, 90, 250, 700, 875, 1050], 110, 150)
         spaces[23] = Property("Kungsträdgårdsgatan", 23, 220, PropertyColor.RED, [18, 90, 250, 700, 875, 1050], 110, 150)
-        spaces[24] = Property("Hangatan", 24, 240, PropertyColor.RED, [20, 100, 300, 750, 925, 1100], 120, 150)
+        spaces[24] = Property("Hamngatan", 24, 240, PropertyColor.RED, [20, 100, 300, 750, 925, 1100], 120, 150)
         
         # Yellow properties
         spaces[26] = Property("Vasagatan", 26, 260, PropertyColor.YELLOW, [22, 110, 330, 800, 975, 1150], 130, 150)
@@ -374,7 +375,7 @@ class MonopolyGame:
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
-            player = Player(name, token, is_bot=True)
+            player = Player(name, token, is_bot=True, game=self)
             #bots.append(Bot(player))
             players.append(player)
             
@@ -408,29 +409,35 @@ class MonopolyGame:
         if total_assets < amount_due:
             print(f"\n{player.name} is bankrupt!")
             player.bankrupt = True
-            
-            # Transfer remaining money and properties to recipient if any
-            if recipient:
-                recipient.receive(player.money)
-                for prop in player.properties:
-                    prop.owner = recipient
-                    recipient.properties.append(prop)
-            
-            # Check if game is over (only one player left)
-            active_players = [p for p in self.players if not p.bankrupt]
-            if len(active_players) == 1:
-                self.game_over = True
-                print(f"\n{active_players[0].name} wins the game!")
+            self.transfer_assets(player, recipient)
         else:
-            if Bot(player).decide_mortgage_property(amount_due): # Can the bot mortgage property?
+            if player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
                 player.pay(amount_due)
                 return True
             else:
                 player.bankrupt = True
                 print(f"\n{player.name} is bankrupt!")
-                return False
+                self.transfer_assets(player, recipient)
         return False
         
+    def transfer_assets(self, player, recipient):
+        # Transfer remaining money and properties to recipient if any
+        if recipient:
+            recipient.receive(player.money)
+            print(f"{player.name} transfers ${player.money} to {recipient.name}.")
+            for prop in player.properties:
+                prop.owner = recipient
+                recipient.properties.append(prop)
+        player.money = 0
+        player.properties = []
+        
+        # Check if game is over (only one player left)
+        active_players = [p for p in self.players if not p.bankrupt]
+        print(len(active_players), active_players)
+        if len(active_players) == 1:
+            self.game_over = True
+            print(f"\n{active_players[0].name} wins the game!")
+    
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
             self.offer_property_purchase(player, property)
@@ -455,7 +462,7 @@ class MonopolyGame:
         # check if player is bot
         
         if player.is_bot:
-            choice = 'y' if  Bot(player).decide_buy_property(property) else 'n'
+            choice = 'y' if player.bot.decide_buy_property(property) else 'n'
         else:
             choice = input(f"Would you like to buy {property.name} for ${property.price}? (y/n): ").lower()
         
@@ -487,7 +494,7 @@ class MonopolyGame:
                 print(f"{bidder.name}'s turn (Money: ${bidder.money})")
                 
                 if bidder.is_bot:
-                    choice = Bot(bidder).decide_auction_bid(property, current_bid)
+                    choice = bidder.bot.decide_auction_bid(property, current_bid)
                 else:
                     choice = input(f"{bidder.name}, bid higher than ${current_bid}? Enter amount (0 to pass): $")
                 
@@ -598,7 +605,7 @@ class MonopolyGame:
             # Options for getting out of jail
             
             if player.is_bot:
-                choice = Bot(player).decide_jail_strategy()
+                choice = player.bot.decide_jail_strategy()
             else:
                 choice = input("What would you like to do?\n1. Roll for doubles\n2. Use Get Out of Jail Free card\n3. Pay $50\nEnter choice: ")
             
@@ -735,7 +742,7 @@ class MonopolyGame:
         # If bot, automatically decide
         if trade_partner.is_bot:
             # Simple bot logic for deciding trades
-            accept = Bot(trade_partner).decide_trade(request_property, offer_property, -cash_amount)
+            accept = trade_partner.bot.decide_trade(request_property, offer_property, -cash_amount)
             
             if accept:
                 # Execute the trade
@@ -854,59 +861,66 @@ class MonopolyGame:
             chosen_color = list(complete_sets.keys())[set_idx]
             props = complete_sets[chosen_color]
             
-            # Display properties in the set
-            print(f"\nProperties in {chosen_color.value} set:")
-            for i, prop in enumerate(props):
-                house_info = f"{prop.houses} houses" if prop.houses > 0 else "no houses"
-                hotel_info = ", has hotel" if prop.hotel else ""
-                print(f"{i+1}. {prop.name} - {house_info}{hotel_info}, house cost: ${prop.house_price}")
+
             
-            prop_idx = int(input("Choose a property to build on (or 0 to cancel): ")) - 1
-            if prop_idx == -1:
-                return
-            if 0 <= prop_idx < len(props):
-                prop = props[prop_idx]
+            while True:
+                #os.system('cls' if os.name == 'nt' else 'clear')
+                # Display properties in the set
+                print(f"\nProperties in {chosen_color.value} set:")
+                for i, prop in enumerate(props):
+                    house_info = f"{prop.houses} houses" if prop.houses > 0 else "no houses"
+                    hotel_info = ", has hotel" if prop.hotel else ""
+                    print(f"{i+1}. {prop.name} - {house_info}{hotel_info}, house cost: ${prop.house_price}")
                 
-                # Check if player can build evenly (difference between houses should be at most 1)
-                min_houses = min(p.houses for p in props)
-                if prop.houses > min_houses and not all(p.houses == min_houses for p in props if p != prop):
-                    print("You must build evenly. Build on properties with fewer houses first.")
+                try:
+                    prop_idx = int(input("Choose a property to build on (or 0 to cancel): ")) - 1
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
+                    continue
+                
+                if prop_idx == -1: # Cancel if 0
                     return
-                
-                # Check if property already has a hotel
-                if prop.hotel:
-                    print("This property already has a hotel. No more buildings possible.")
-                    return
-                
-                # Determine if buying a house or hotel
-                if prop.houses == 4:
-                    # Buy a hotel
-                    if player.pay(prop.house_price):
-                        if prop.add_house_or_hotel():
-                            print(f"Added a hotel to {prop.name}!")
+                if 0 <= prop_idx < len(props):
+                    prop = props[prop_idx]
+                    
+                    # Check if player can build evenly (difference between houses should be at most 1)
+                    min_houses = min(p.houses for p in props)
+                    if prop.houses > min_houses and not all(p.houses == min_houses for p in props if p != prop):
+                        print("You must build evenly. Build on properties with fewer houses first.")
+                    
+                    # Check if property already has a hotel
+                    if prop.hotel:
+                        print("This property already has a hotel. No more buildings possible.")
+                    
+                    # Determine if buying a house or hotel
+                    if prop.houses == 4:
+                        # Buy a hotel
+                        if player.pay(prop.house_price):
+                            if prop.add_house_or_hotel():
+                                print(f"Added a hotel to {prop.name}!")
+                            else:
+                                player.receive(prop.house_price)  # Refund if hotel couldn't be added
+                                print("Could not add a hotel to this property.")
                         else:
-                            player.receive(prop.house_price)  # Refund if hotel couldn't be added
-                            print("Could not add a hotel to this property.")
+                            print(f"Not enough money to buy a hotel (${prop.house_price}).")
                     else:
-                        print(f"Not enough money to buy a hotel (${prop.house_price}).")
+                        # Buy a house
+                        if player.pay(prop.house_price):
+                            if prop.add_house_or_hotel():
+                                print(f"Added a house to {prop.name}!")
+                            else:
+                                player.receive(prop.house_price)  # Refund if house couldn't be added
+                                print("Could not add a house to this property.")
+                        else:
+                            print(f"Not enough money to buy a house (${prop.house_price}).")
                 else:
-                    # Buy a house
-                    if player.pay(prop.house_price):
-                        if prop.add_house_or_hotel():
-                            print(f"Added a house to {prop.name}!")
-                        else:
-                            player.receive(prop.house_price)  # Refund if house couldn't be added
-                            print("Could not add a house to this property.")
-                    else:
-                        print(f"Not enough money to buy a house (${prop.house_price}).")
-            else:
-                print("Invalid property number.")
+                    print("Invalid property number.")
         else:
             print("Invalid set number.")
     
     def build_house_bot(self, player):
         ''' build house for bot '''
-        property = Bot(player, game=self).decide_house_purchases()
+        property = player.bot.decide_house_purchases()
         if property and type:
             if property and type:
                 cost = property.house_price
@@ -1048,7 +1062,7 @@ class MonopolyGame:
         if not player.is_bot:
             input("Press Enter to continue...")
         else:
-            Bot(player, game=self).make_move()
+            player.bot.make_move()
         self.next_player()
     
     def display_all_properties(self):
@@ -1167,13 +1181,19 @@ class MonopolyGame:
                     hotel_count = sum(1 for p in player.properties if hasattr(p, 'hotel') and p.hotel)
                     mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
                     
-                    print(f"{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged")
+                    print(f"{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged", "$" + str(player.money))
+
+                #display all bankrupt players
+                bankrupt_players = [p for p in self.players if p.bankrupt]
+                if bankrupt_players:
+                    print("\n=== BANKRUPT PLAYERS ===")
+                    for player in bankrupt_players:
+                        print(f"{player.name} is bankrupt.")
 
 class Bot:
     def __init__(self, player, game=None): # Bot class 
         self.player = player
         self.game = game
-        #self.game = game
         self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
         
     def decide_buy_property(self, property):
@@ -1365,7 +1385,7 @@ class Bot:
                 
                 # For AI opponents, use their decide_trade method
                 if target_owner.is_bot:
-                    bot = Bot(target_owner)
+                    bot = target_owner.bot
                     accepted = bot.decide_trade(target_prop, offer_prop, -cash_amount)
                 else:
                     # For human players, ask for input
@@ -1548,7 +1568,7 @@ class Bot:
                 
                 # If this is the only mortgaged property in a complete set
                 if owned_in_color == color_counts.get(prop.color, 0) and mortgaged_in_color == 1:
-                    unmortgage_cost = prop.unmortgage(self.player)
+                    unmortgage_cost = prop.unmortgage()
                     if unmortgage_cost <= self.player.money - 500:  # Keep some reserves
                         print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost} to complete a set")
                         self.player.pay(unmortgage_cost)
