@@ -2,26 +2,30 @@
 
 ## Ready
 
-- Implement full bot compatibility
-  - add bot house purchasing compaibility
-- create Neural network
 - Devide the program in file
   - add the bot in separate folders
-- add house purachsing for bots
-- fixing house selling for bots
-- colorcode the text
-- record all move for statistical purpuse
+
+- record all move for statistical purpus
+- make conservative and agressive bots
+
+- implement 
 
 ## In progress
-  - add trading compatibility
-  - Only bot monopoly
-  - Monopoly statistics
 
 ## Done
 - created basic monopoly game
 - implemented basic bot functionality
 - trade initiations for bots
 - basic statistics for multigame simulation
+- - create Neural network
+- Implement full bot compatibility
+  - add bot house purchasing compaibility
+- add house purachsing for bots
+- fixing house selling for bots
+- colorcode the text
+- add trading compatibility
+- Only bot monopoly
+- Monopoly statistics
 
 ## Problems/Bugs
 
