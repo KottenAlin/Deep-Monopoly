@@ -36,6 +36,7 @@
 - ~~players getting multiple turns~~ 
 - ~~jumping over and not displaying chance~~
 - ~~properties not transfering when bankruptsy~~
+- ~~properties not costing money to pay~~
 
 
 ## Optimisation

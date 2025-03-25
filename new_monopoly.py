@@ -1715,89 +1715,145 @@ class GameStatistics:
         return list(self.player_stats.values())[0].game.board if self.player_stats else None
 
 class Bot:
-    def __init__(self, player, game=None): # Bot class 
+    def __init__(self, player, game=None, parameters={ }):
         self.player = player
         self.game = game
-        self.risk_tolerance = random.random()  # 0.0 to 1.0, how risky the bot is in decisions
+        
+        if parameters:
+            self.risk_tolerance = parameters['risk_tolerance']
+            self.property_focus = parameters['property_focus']
+            self.development_focus = parameters['development_focus']
+            self.cash_reserve_preference = parameters['cash_reserve_preference']
+            self.trade_willingness = parameters['trade_willingness']
+            self.monopoly_focus = parameters['monopoly_focus']
+            self.railroad_utility_interest = parameters['railroad_utility_interest']
+        else: 
+            # Bot personality parameters (all between 0.0 and 1.0)
+            self.risk_tolerance = random.random()  # How risky the bot is in decisions
+            self.property_focus = random.random()  # How much the bot values owning properties
+            self.development_focus = random.random()  # How much the bot prioritizes building houses
+            self.cash_reserve_preference = random.random()  # How much cash the bot tries to keep
+            self.trade_willingness = random.random()  # How open the bot is to trades
+            self.monopoly_focus = random.random()  # How focused on completing color sets
+            self.railroad_utility_interest = random.random()  # Interest in railroads and utilities
+        
+        # Generate a bot personality type based on parameters
+        self.personality_type = self._determine_personality()
+        
+    def _determine_personality(self):
+        """Set a personality type based on the randomized parameters"""
+        if self.risk_tolerance > 0.7 and self.property_focus > 0.7:
+            return "Aggressive Expander"
+        elif self.development_focus > 0.7 and self.monopoly_focus > 0.7:
+            return "Builder"
+        elif self.cash_reserve_preference > 0.7:
+            return "Conservative"
+        elif self.trade_willingness > 0.7:
+            return "Trader"
+        elif self.railroad_utility_interest > 0.7:
+            return "Utility Collector"
+        else:
+            return "Balanced Player"
         
     def decide_buy_property(self, property):
         """Decide whether to buy a property."""
-        # Always buy if plenty of money
-        if self.player.money > property.price * 3:
+        # Always buy if plenty of money, adjusted by cash reserve preference
+        min_reserve = 500 * self.cash_reserve_preference
+        if self.player.money > property.price + min_reserve:
             return True
         
-        # More likely to buy railroads and utilities
+        # More likely to buy railroads and utilities if interested in them
         if property.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-            return random.random() < 0.8
+            return random.random() < 0.5 + (0.5 * self.railroad_utility_interest)
         
-        # Check if we already own properties of this color
+        # Check if we already own properties of this color, adjusted by monopoly focus
         same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
         if same_color_count > 0:
-            return random.random() < 0.7 + (0.1 * same_color_count)  # More likely if we have others
+            monopoly_chance = 0.5 + (0.3 * self.monopoly_focus) + (0.1 * same_color_count)
+            return random.random() < monopoly_chance
         
-        # Base decision on risk tolerance and money available
-        return random.random() < self.risk_tolerance and self.player.money > property.price * 1.5
+        # Base decision on risk tolerance, property focus and money available
+        purchase_chance = self.risk_tolerance * self.property_focus
+        return random.random() < purchase_chance and self.player.money > property.price * (1.0 + self.cash_reserve_preference)
 
     def decide_auction_bid(self, property, current_bid):
         """Decide how much to bid in an auction."""
-        max_willing_to_pay = property.price * (0.8 + self.risk_tolerance * 0.4)
+        # Maximum bid based on property focus and risk tolerance
+        max_willing_to_pay = property.price * (0.7 + self.property_focus * 0.6)
         
         # Bid higher if we already own properties of this color
         same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
         if same_color_count > 0:
-            max_willing_to_pay *= (1 + same_color_count * 0.2)
+            monopoly_bonus = self.monopoly_focus * 0.3 * same_color_count
+            max_willing_to_pay *= (1 + monopoly_bonus)
         
-        # Don't bid more than we have
-        max_willing_to_pay = min(max_willing_to_pay, self.player.money - 50)  # Keep some reserve
+        # Keep a reserve based on preference
+        reserve_amount = 50 + (self.cash_reserve_preference * 200)
+        
+        # Don't bid more than we have minus reserve
+        max_willing_to_pay = min(max_willing_to_pay, self.player.money - reserve_amount)
         
         if max_willing_to_pay <= current_bid:
             return 0  # Pass
         
-        # Bid somewhere between current bid and max willing
+        # Bid somewhere between current bid and max willing, based on risk tolerance
         bid_range = max_willing_to_pay - current_bid
-        new_bid = current_bid + max(1, int(bid_range * random.random() * 0.5))
+        bid_percentage = 0.3 + (self.risk_tolerance * 0.5)  # More aggressive = higher bids
+        new_bid = current_bid + max(1, int(bid_range * bid_percentage))
         return new_bid
  
     def decide_trade(self, my_property, their_property, cash_amount):
         """Decide whether to accept a trade offer."""
+        # Low trade willingness means more likely to reject trades
+        if random.random() > self.trade_willingness * 1.5:  # Scale up to make trades happen
+            return False
+            
         # Value of properties 
         my_prop_value = my_property.price * (0.5 if my_property.status == PropertyStatus.MORTGAGED else 1.0)
         their_prop_value = their_property.price * (0.5 if their_property.status == PropertyStatus.MORTGAGED else 1.0)
         
         # Check if we have almost a monopoly with their property
         gain_monopoly = False
-        for p in self.player.properties:
-            if p.color == their_property.color:
-                gain_monopoly = True
+        same_color_props = sum(1 for p in self.player.properties if p.color == their_property.color)
+        total_in_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == their_property.color)
+        if same_color_props + 1 == total_in_color:
+            gain_monopoly = True
         
         # Check if we're giving away part of a monopoly
         lose_monopoly = False
-        same_color_count = sum(1 for p in self.player.properties if p.color == my_property.color)
-        color_total = sum(1 for p in self.player.properties if isinstance(p, Property) and p.color == my_property.color)
-        if same_color_count > 1 and same_color_count == color_total:
+        my_color_props = sum(1 for p in self.player.properties if p.color == my_property.color)
+        total_in_my_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == my_property.color)
+        if my_color_props == total_in_my_color:
             lose_monopoly = True
         
-        # Adjust values based on strategic importance
+        # Adjust values based on strategic importance and monopoly focus
         if gain_monopoly:
-            their_prop_value *= 1.5
+            their_prop_value *= 1.0 + (self.monopoly_focus * 1.0)
         if lose_monopoly:
-            my_prop_value *= 1.5
+            my_prop_value *= 1.0 + (self.monopoly_focus * 1.0)
         
         # Consider the cash component
         total_value_for_me = their_prop_value - my_prop_value + cash_amount
         
-        # Also consider if we have enough cash
-        if cash_amount < 0 and self.player.money < -cash_amount:
+        # Also consider if we have enough cash, based on cash reserve preference
+        min_cash = 100 + (self.cash_reserve_preference * 300)
+        if cash_amount < 0 and self.player.money < -cash_amount + min_cash:
             return False
         
         # Accept if it's a good deal or we're desperate for cash
-        return total_value_for_me > 0 or (cash_amount > 0 and self.player.money < 100)
+        return total_value_for_me > 0 or (cash_amount > 0 and self.player.money < min_cash)
 
     def initiate_trade(self):
         """Initiate a trade with another player to complete color sets."""
-        # Don't try to trade if we have very little money
-        if self.player.money < 100:
+        # Less willing traders initiate fewer trades
+        if random.random() > self.trade_willingness:
             return None
+            
+        # Don't try to trade if we have very little money
+        min_cash = 100 + (self.cash_reserve_preference * 200)
+        if self.player.money < min_cash:
+            return None
+            
         # Find properties that would complete our color sets
         potential_monopolies = {}
         
@@ -1822,8 +1878,8 @@ class Bot:
             if count == color_counts[color] - 1:
                 potential_monopolies[color] = color_counts[color]
         
-        if not potential_monopolies:
-            # No near-monopolies, try to get more railroads or utilities instead
+        # If no near-monopolies but interested in railroads/utilities, try those
+        if not potential_monopolies and self.railroad_utility_interest > 0.6:
             if any(p.color == PropertyColor.RAILROAD for p in self.player.properties):
                 # Try to get more railroads
                 potential_monopolies[PropertyColor.RAILROAD] = 4
@@ -1856,14 +1912,14 @@ class Bot:
             for prop in self.player.properties:
                 # Don't offer properties from potential monopolies
                 if prop.color not in potential_monopolies:
-                    # Don't offer railroads or utilities unless we have extras
+                    # Don't offer railroads or utilities unless we have extras or don't care about them
                     if prop.color == PropertyColor.RAILROAD:
                         railroad_count = sum(1 for p in self.player.properties if p.color == PropertyColor.RAILROAD)
-                        if railroad_count <= 1:  # Keep at least one
+                        if railroad_count <= 1 and self.railroad_utility_interest > 0.5:
                             continue
                     elif prop.color == PropertyColor.UTILITY:
                         utility_count = sum(1 for p in self.player.properties if p.color == PropertyColor.UTILITY)
-                        if utility_count <= 1:  # Keep at least one
+                        if utility_count <= 1 and self.railroad_utility_interest > 0.5:
                             continue
                             
                     # Don't offer properties with houses/hotels
@@ -1890,18 +1946,20 @@ class Bot:
                 if offer_prop.status == PropertyStatus.MORTGAGED:
                     value_diff += offer_prop.mortgage_value * 0.1  # They'd have to pay to unmortgage
                 
-                # Determine cash adjustment
+                # Determine cash adjustment based on trade willingness
                 cash_amount = 0
+                max_cash_percentage = 0.3 + (self.trade_willingness * 0.5)  # More willing = more cash offered
+                
                 if value_diff > 0:  # We need to add cash
-                    cash_amount = min(value_diff, self.player.money * 0.7)  # Don't spend more than 70% of our money
+                    cash_amount = min(value_diff, self.player.money * max_cash_percentage)
                 elif value_diff < 0:  # We should receive cash
-                    cash_amount = max(value_diff, -target_owner.money * 0.7)  # Don't ask for more than 70% of their money
+                    cash_amount = max(value_diff, -target_owner.money * max_cash_percentage)
                 
                 # Use game's color system for the trade offer
                 colors = self.game.colors
                 
                 # Make the trade offer
-                print(f"\n{colors['bot']}BOT TRADE: {colors['player']}{self.player.name} {colors['title']}offers {colors['player']}{target_owner.name} {colors['title']}a trade:{colors['reset']}")
+                print(f"\n{colors['bot']}BOT TRADE ({self.personality_type}): {colors['player']}{self.player.name} {colors['title']}offers {colors['player']}{target_owner.name} {colors['title']}a trade:{colors['reset']}")
                 print(f"{colors['info']}Offering: {colors['property']}{offer_prop.name}{colors['reset']}")
                 print(f"{colors['info']}Requesting: {colors['property']}{target_prop.name}{colors['reset']}")
                 
@@ -1914,7 +1972,7 @@ class Bot:
                 if target_owner.is_bot:
                     bot = target_owner.bot
                     accepted = bot.decide_trade(target_prop, offer_prop, -cash_amount)
-                    print(f"{colors['bot']}Bot {target_owner.name} is evaluating the trade...{colors['reset']}")
+                    print(f"{colors['bot']}Bot {target_owner.name} ({bot.personality_type}) is evaluating the trade...{colors['reset']}")
                 else:
                     # For human players, ask for input
                     accepted = input(f"\n{colors['prompt']}{target_owner.name}, do you accept this trade? (y/n): {colors['reset']}").lower() == 'y'
@@ -1954,8 +2012,13 @@ class Bot:
         if self.player.jail_free_cards > 0:
             return "2"
         
-        # Pay the fine if we have plenty of money or in the late game
-        if self.player.money > 500:
+        # Pay the fine if we have plenty of money or are impatient (low cash reserve preference)
+        cash_threshold = 300 + (self.cash_reserve_preference * 500)
+        if self.player.money > cash_threshold:
+            return "3"
+        
+        # High risk tolerance players may pay to get out
+        if random.random() < self.risk_tolerance * 0.5:
             return "3"
         
         # Otherwise, try to roll doubles
@@ -1963,7 +2026,9 @@ class Bot:
 
     def decide_house_purchases(self):
         """Decide whether and where to buy houses."""
-        if self.player.money < 200:  # Keep some reserves
+        # Minimum cash reserve based on preference
+        min_reserve = 200 + (self.cash_reserve_preference * 300)
+        if self.player.money < min_reserve:
             return None
         
         # Group properties by color
@@ -1984,7 +2049,7 @@ class Bot:
         if not complete_sets:
             return None
         
-        # Prioritize based on position (later in the board is better) and current houses
+        # Prioritize based on position, current houses, and development focus
         best_set = None
         best_score = -1
         
@@ -1992,12 +2057,19 @@ class Bot:
             avg_position = sum(p.position for p in props) / len(props)
             avg_houses = sum(p.houses for p in props) / len(props)
             
-            # Score based on position (0.4), existing development (0.3), and affordability (0.3)
+            # Score based on position, existing development, and affordability
             position_score = avg_position / 40  # Normalize to 0-1
             development_score = (3 - avg_houses) / 3  # Prefer less developed (more room to build)
             affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
             
-            score = position_score * 0.4 + development_score * 0.3 + affordability * 0.3
+            # Adjust weight based on development focus
+            position_weight = 0.3 + (self.risk_tolerance * 0.2)  # Risky players care more about position
+            development_weight = 0.3
+            affordability_weight = 0.2 + (self.cash_reserve_preference * 0.2)  # Conservative players care more about affordability
+            
+            score = (position_score * position_weight + 
+                    development_score * development_weight + 
+                    affordability * affordability_weight) * self.development_focus
             
             if score > best_score:
                 best_score = score
@@ -2040,33 +2112,55 @@ class Bot:
                 houses_to_sell = min(prop.houses, 
                         ((amount_needed - raised_amount) + (prop.house_price // 2) - 1) // (prop.house_price // 2))
                 raised_amount += (prop.house_price // 2) * houses_to_sell
-                prop.remove_house(house_count = houses_to_sell)
+                for _ in range(houses_to_sell):
+                    prop.remove_house()
         
         # If selling buildings wasn't enough, mortgage properties
+        # Sort properties by how valuable they are to keep (mortgaging least valuable first)
         candidates = [p for p in self.player.properties 
                 if p.status != PropertyStatus.MORTGAGED and p.houses == 0 and not p.hotel]
             
-        # Sort candidates by the criteria defined above
-        candidates.sort(key=lambda p: (
-            sum(1 for op in self.player.properties if op.color == p.color),
-            -p.position,
-            -p.mortgage_value
-        ))
+        # Calculate a score for each property based on bot parameters
+        def property_value_score(prop):
+            # Higher score = less likely to mortgage
+            score = prop.price / 500.0  # Base value (0-1 range typically)
+            
+            # Bonus for properties in near-monopolies
+            same_color_count = sum(1 for p in self.player.properties if p.color == prop.color)
+            total_in_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == prop.color)
+            monopoly_factor = same_color_count / total_in_color
+            score += monopoly_factor * self.monopoly_focus
+            
+            # Railroads and utilities get bonus if the bot values them
+            if prop.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                score += self.railroad_utility_interest * 0.5
+            
+            # Properties in developed areas are more valuable
+            score += (prop.position / 40.0) * self.risk_tolerance * 0.5
+            
+            return score
+            
+        # Sort so lowest scored (least valuable) properties are mortgaged first
+        candidates.sort(key=property_value_score)
         
         # Mortgage properties until we've raised enough money
         for prop in candidates:
             properties_to_mortgage.append(prop)
             raised_amount += prop.mortgage_value
             if raised_amount >= amount_needed:
-                print(f"\n mortgaging properties to pay off debts.")
-                for prop in properties_to_mortgage:
-                    prop.mortgage(self.player)
+                print(f"\n{self.player.name} ({self.personality_type}) is mortgaging properties to pay off debts.")
+                for p in properties_to_mortgage:
+                    p.mortgage(self.player)
                 return True
+        
+        # If we get here, we couldn't raise enough money
+        return False
 
     def decide_unmortgage_property(self):
         """Decide which properties to unmortgage based on wealth and completing sets."""
-        # Only unmortgage if we have plenty of money (at least 500)
-        if self.player.money < 500:
+        # Only unmortgage if we have plenty of money, modified by cash reserve preference
+        min_reserve = 500 * (0.5 + self.cash_reserve_preference)
+        if self.player.money < min_reserve:
             return None
         
         # Find all mortgaged properties
@@ -2090,28 +2184,47 @@ class Bot:
                     color_counts[space.color] = 0
                 color_counts[space.color] += 1
         
-        # First priority: unmortgage properties that complete a set
-        for prop in mortgaged_props:
+        # Score each mortgaged property for unmortgaging priority
+        def unmortgage_priority_score(prop):
+            score = 0
+            
+            # Higher score for properties that would complete a monopoly
             if prop.color in props_by_color:
                 mortgaged_in_color = sum(1 for p in props_by_color[prop.color] if p.status == PropertyStatus.MORTGAGED)
                 owned_in_color = len(props_by_color[prop.color])
+                total_in_color = color_counts.get(prop.color, 0)
                 
-                # If this is the only mortgaged property in a complete set
-                if owned_in_color == color_counts.get(prop.color, 0) and mortgaged_in_color == 1:
-                    unmortgage_cost = prop.unmortgage()
-                    if unmortgage_cost <= self.player.money - 500:  # Keep some reserves
-                        print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost} to complete a set")
-                        self.player.pay(unmortgage_cost)
-                        return prop
+                # If this would complete a monopoly
+                if owned_in_color == total_in_color and mortgaged_in_color == 1:
+                    score += 5.0 * self.monopoly_focus
+                
+                # Bonus for color groups we have a lot of
+                monopoly_progress = owned_in_color / total_in_color
+                score += monopoly_progress * self.monopoly_focus * 2.0
+            
+            # Railroads and utilities get bonus based on interest
+            if prop.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                count = sum(1 for p in self.player.properties 
+                         if p.color == prop.color and p.status != PropertyStatus.MORTGAGED)
+                score += count * self.railroad_utility_interest
+            
+            # Properties in developed areas get a bonus based on risk tolerance
+            score += (prop.position / 40.0) * self.risk_tolerance
+            
+            return score
         
-        # Second priority: unmortgage any property if we're wealthy
-        if self.player.money > 1000:
-            for prop in mortgaged_props:
-                unmortgage_cost = prop.unmortgage()
-                if unmortgage_cost <= self.player.money - 700:  # Keep larger reserves
-                    print(f"{self.player.name} unmortgages {prop.name} for ${unmortgage_cost}")
-                    self.player.pay(unmortgage_cost)
-                    return prop
+        # Sort mortgaged properties by priority score
+        mortgaged_props.sort(key=unmortgage_priority_score, reverse=True)
+        
+        # Try to unmortgage the highest priority property if we can afford it
+        for prop in mortgaged_props:
+            unmortgage_cost = prop.unmortgage()
+            affordable_reserve = self.player.money - unmortgage_cost - (300 * self.cash_reserve_preference)
+            
+            if affordable_reserve > 0:
+                print(f"{self.player.name} ({self.personality_type}) unmortgages {prop.name} for ${unmortgage_cost}")
+                self.player.pay(unmortgage_cost)
+                return prop
         
         return None
 
@@ -2120,17 +2233,25 @@ class Bot:
         # If in jail, decide strategy
         if self.player.jail_turns > 0:
             return self.decide_jail_strategy()
-            
-        property = self.decide_house_purchases()
-        if property:
-            print(property.name)
-        self.game.build_house_bot(self.player)
-        print(self.initiate_trade())
-        self.decide_unmortgage_property()
         
-        # If low on money, consider mortgaging properties
-        if self.player.money < 100:
-            self.decide_mortgage_property(100 - self.player.money)
+        # Development is prioritized based on development focus
+        if random.random() < self.development_focus:
+            property = self.decide_house_purchases()
+            if property:
+                self.game.build_house_bot(self.player)
+        
+        # Trading frequency based on trade willingness
+        if random.random() < self.trade_willingness:
+            self.initiate_trade()
+        
+        # Unmortgage based on cash reserves and property focus
+        if random.random() < self.property_focus:
+            self.decide_unmortgage_property()
+        
+        # If low on money, consider mortgaging properties based on cash reserve preference
+        min_cash = 50 + (self.cash_reserve_preference * 200)
+        if self.player.money < min_cash:
+            self.decide_mortgage_property(min_cash - self.player.money)
 
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
