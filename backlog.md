@@ -10,6 +10,8 @@
 
 - implement neural network
 - add paremeters to bot
+- unit test
+- add strandard global variables
 
 ## In progress
 
@@ -27,6 +29,7 @@
 - add trading compatibility
 - Only bot monopoly
 - Monopoly statistics
+
 
 
 ## Problems/Bugs

@@ -2,27 +2,10 @@ import random
 from enum import Enum
 import time
 import os
-import torch
 import numpy as np
 from colorama import init, Fore, Back, Style
-import torch.nn as nn
-import torch.optim as optim 
-
-class PropertyColor(Enum):
-    BROWN = "Brown"
-    LIGHT_BLUE = "Light Blue"
-    PINK = "Pink"
-    ORANGE = "Orange"
-    RED = "Red"
-    YELLOW = "Yellow"
-    GREEN = "Green"
-    DARK_BLUE = "Dark Blue"
-    RAILROAD = "Railroad"
-    UTILITY = "Utility"
-class PropertyStatus(Enum):
-    UNOWNED = "Unowned"
-    OWNED = "Owned"
-    MORTGAGED = "Mortgaged"
+from game_models import Property, PropertyColor, PropertyStatus
+from Bot import Bot, parameters
 class Player:
     def __init__(self, name, token, is_bot=False, game=None):
         self.name = name
@@ -34,7 +17,7 @@ class Player:
         self.jail_free_cards = 0
         self.bankrupt = False
         self.is_bot = is_bot
-        self.bot = Bot(self, game=game)
+        self.bot = Bot(self, game=game, parameters=parameters)
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -110,78 +93,6 @@ class Player:
         # Display jail status
         if self.jail_turns > 0:
             print(f"  {colors['jail']}In jail: {self.jail_turns} turns remaining{colors['reset']}")
-class Property:
-    def __init__(self, name, position, price, color, rents, mortgage_value, house_price=0):
-        self.name = name
-        self.position = position
-        self.price = price
-        self.color = color
-        self.rents = rents  # List of rents [base, 1 house, 2 houses, 3 houses, 4 houses, hotel]
-        self.mortgage_value = mortgage_value
-        self.house_price = house_price
-        self.owner = None
-        self.status = PropertyStatus.UNOWNED
-        self.houses = 0
-        self.hotel = False
-    
-    def calculate_rent(self, dice_roll=None):
-        if self.status == PropertyStatus.MORTGAGED:
-            return 0
-            
-        if self.color == PropertyColor.UTILITY and dice_roll:
-            # Utilities rent is based on dice roll
-            multiplier = 4 if self.owner.properties.count(self) == 1 else 10
-            return dice_roll * multiplier
-            
-        if self.color == PropertyColor.RAILROAD:
-            # Railroads rent increases based on how many railroads the owner has
-            railroad_count = sum(1 for prop in self.owner.properties if prop.color == PropertyColor.RAILROAD)
-            return self.rents[railroad_count - 1]
-            
-        # Regular property
-        if self.hotel:
-            return self.rents[5]
-        else:
-            return self.rents[self.houses]
-    
-    def mortgage(self, player):
-        if self.status == PropertyStatus.OWNED and self.houses == 0 and not self.hotel:
-            self.status = PropertyStatus.MORTGAGED
-            player.receive(self.mortgage_value)
-            return self.mortgage_value
-        return 0
-    
-    def unmortgage(self):
-        if self.status == PropertyStatus.MORTGAGED:
-            unmortgage_cost = int(self.mortgage_value)
-            self.status = PropertyStatus.OWNED
-            return unmortgage_cost
-        return 0
-    
-    def add_house_or_hotel(self):
-        #print(self.status, self.hotel, self.houses)
-        if self.status == PropertyStatus.OWNED and not self.hotel:
-            if  self.houses < 4 :
-                self.houses += 1
-                return True
-            elif self.houses == 4:
-                self.hotel = True
-                self.houses = 0
-                return True
-            return False
-    
-    def remove_hotel(self):
-        if self.hotel:
-            self.hotel = False
-            self.houses = 4
-            return True
-        return False
-    
-    def remove_house(self, house_count=1):
-        if self.houses > 0:
-            self.houses -= 1
-            return True
-        return False
 class Board:
     def __init__(self):
         self.spaces = self.create_board()
@@ -489,7 +400,6 @@ class MonopolyGame:
     def create_players(self, player_count, bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
-        #bots = []
         for i in range(player_count):
             name = input(f"{self.colors['prompt']}Enter name for player {i + 1}: {self.colors['reset']}")
             token = tokens[i % len(tokens)] # Cycle through tokens if more than 8 players are playing
@@ -498,7 +408,6 @@ class MonopolyGame:
             name = f"Bot {i + 1}"
             token = "🤖"
             player = Player(name, token, is_bot=True, game=self)
-            #bots.append(Bot(player))
             players.append(player)
             print(f"{self.colors['bot']}Added AI player: {name} {token}")
             
@@ -532,6 +441,8 @@ class MonopolyGame:
         if total_assets < amount_due:
             print(f"\n{self.colors['error']}{player.name} is bankrupt!")
             player.bankrupt = True
+            if input("display statistics? (y/n): ").lower() == 'y':
+                    self.display_statistics()
             self.transfer_assets(player, recipient)
         else:
             if player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
@@ -540,6 +451,8 @@ class MonopolyGame:
             else:
                 player.bankrupt = True
                 print(f"\n{self.colors['error']}{player.name} is bankrupt!")
+                if input("display statistics? (y/n): ").lower() == 'y':
+                    self.display_statistics()
                 self.transfer_assets(player, recipient)
         return False
         
@@ -576,7 +489,7 @@ class MonopolyGame:
                 print(f"{self.colors['player']}{player.name} pays {self.colors['rent']}${rent} to {self.colors['player']}{property.owner.name}.")
             else:
                 print(f"{self.colors['error']}{player.name} doesn't have enough money to pay the rent!")
-                self.display_statistics()
+                
                 self.check_bankruptcy(player, rent, property.owner)
                 
     def offer_property_purchase(self, player, property):
@@ -993,7 +906,7 @@ class MonopolyGame:
 
             
             while True:
-                #os.system('cls' if os.name == 'nt' else 'clear')
+                
                 # Display properties in the set
                 print(f"\n{self.colors['title']}PROPERTIES IN {chosen_color.value} SET:")
                 for i, prop in enumerate(props):
@@ -1112,7 +1025,7 @@ class MonopolyGame:
     
     def play_turn(self):
         player = self.players[self.current_player_idx]
-        #os.system('cls' if os.name == 'nt' else 'clear')
+        os.system('cls' if os.name == 'nt' else 'clear')
         
         if player.bankrupt:
             self.next_player()
@@ -1246,8 +1159,6 @@ class MonopolyGame:
         turns = 0
     
         while not self.game_over:
-            # Clear the screen
-            #os.system('cls' if os.name == 'nt' else 'clear')
             
             self.play_turn()
             
@@ -1328,10 +1239,10 @@ class MonopolyGame:
         active_players = [p for p in self.players if not p.bankrupt]
         bankrupt_players = [p for p in self.players if p.bankrupt]
         
-        print("\n=== EXTENDED GAME STATISTICS ===\n")
+        print(f"\n{self.colors['title']}=== EXTENDED GAME STATISTICS ===\n")
         
         # Player Rankings by Net Worth
-        print("PLAYER RANKINGS BY NET WORTH:")
+        print(f"{self.colors['title']}PLAYER RANKINGS BY NET WORTH:")
         player_values = {}
         for p in self.players:
             total_value = p.money
@@ -1347,11 +1258,11 @@ class MonopolyGame:
         
         # Sort players by net worth and display ranking
         for i, (name, value) in enumerate(sorted(player_values.items(), key=lambda x: x[1], reverse=True)):
-            status = "ACTIVE" if next((p for p in active_players if p.name == name), None) else "BANKRUPT"
-            print(f"{i+1}. {name}: ${value:.2f} ({status})")
+            status = f"{self.colors['success']}ACTIVE" if next((p for p in active_players if p.name == name), None) else f"{self.colors['error']}BANKRUPT"
+            print(f"{i+1}. {self.colors['player']}{name}: {self.colors['money']}${value:.2f} ({status}{self.colors['reset']})")
         
         # Property Statistics
-        print("\nPROPERTY STATISTICS:")
+        print(f"\n{self.colors['title']}PROPERTY STATISTICS:")
         property_stats = {
             "total": 0,
             "owned": 0,
@@ -1404,28 +1315,28 @@ class MonopolyGame:
                 else:
                     property_stats["unowned"] += 1
         
-        print(f"Total Properties: {property_stats['total']}")
-        print(f"Owned: {property_stats['owned']} ({property_stats['owned']/property_stats['total']*100:.1f}%)")
-        print(f"Unowned: {property_stats['unowned']}")
-        print(f"Mortgaged: {property_stats['mortgaged']} ({property_stats['mortgaged']/property_stats['owned']*100:.1f}% of owned)")
-        print(f"Properties with Houses/Hotels: {property_stats['developed']}")
-        print(f"Total Houses on Board: {property_stats['houses']}")
-        print(f"Total Hotels on Board: {property_stats['hotels']}")
+        print(f"{self.colors['info']}Total Properties: {property_stats['total']}")
+        print(f"{self.colors['info']}Owned: {self.colors['success']}{property_stats['owned']} ({property_stats['owned']/property_stats['total']*100:.1f}%)")
+        print(f"{self.colors['info']}Unowned: {self.colors['warning']}{property_stats['unowned']}")
+        print(f"{self.colors['info']}Mortgaged: {self.colors['warning']}{property_stats['mortgaged']} ({property_stats['mortgaged']/property_stats['owned']*100:.1f}% of owned)")
+        print(f"{self.colors['info']}Properties with Houses/Hotels: {self.colors['success']}{property_stats['developed']}")
+        print(f"{self.colors['info']}Total Houses on Board: {self.colors['success']}{property_stats['houses']}")
+        print(f"{self.colors['info']}Total Hotels on Board: {self.colors['success']}{property_stats['hotels']}")
         
         if most_valuable_prop:
             owner_name = most_valuable_prop.owner.name if most_valuable_prop.owner else "None"
-            print(f"\nMost Valuable Property: {most_valuable_prop.name} (Owned by: {owner_name})")
-            print(f"Current Rent: ${highest_rent}")
+            print(f"\n{self.colors['info']}Most Valuable Property: {self.colors['property']}{most_valuable_prop.name} (Owned by: {self.colors['player']}{owner_name})")
+            print(f"{self.colors['info']}Current Rent: {self.colors['rent']}${highest_rent}")
         
         # Most developed color group
         if color_development:
             most_dev_color = max(color_development.items(), 
                                 key=lambda x: x[1]["houses"] + x[1]["hotels"]*5)
-            print(f"\nMost Developed Color Group: {most_dev_color[0].value}")
-            print(f"Development: {most_dev_color[1]['houses']} houses, {most_dev_color[1]['hotels']} hotels")
+            print(f"\n{self.colors['info']}Most Developed Color Group: {self.colors['property']}{most_dev_color[0].value}")
+            print(f"{self.colors['info']}Development: {self.colors['success']}{most_dev_color[1]['houses']} houses, {most_dev_color[1]['hotels']} hotels")
         
         # Monopoly statistics
-        print("\nMONOPOLY STATISTICS:")
+        print(f"\n{self.colors['title']}MONOPOLY STATISTICS:")
         monopolies = {}
         for player in active_players:
             player_monopolies = []
@@ -1440,951 +1351,29 @@ class MonopolyGame:
         
         if monopolies:
             for player_name, colors in monopolies.items():
-                print(f"{player_name} has monopoly on: {', '.join(colors)}")
+                print(f"{self.colors['player']}{player_name} has monopoly on: {self.colors['property']}{', '.join(colors)}")
         else:
-            print("No player has a monopoly on any color group.")
+            print(f"{self.colors['info']}No player has a monopoly on any color group.")
         
         # Special category ownership
-        print("\nSPECIAL CATEGORY OWNERSHIP:")
+        print(f"\n{self.colors['title']}SPECIAL CATEGORY OWNERSHIP:")
         for category in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
             for player in active_players:
                 count = sum(1 for p in player.properties if p.color == category)
                 if count > 0:
-                    print(f"{player.name} owns {count} {category.value}s")
+                    print(f"{self.colors['player']}{player.name} owns {self.colors['success']}{count} {self.colors['property']}{category.value}s")
         
         # Money distribution
         if active_players:
-            print("\nMONEY DISTRIBUTION:")
+            print(f"\n{self.colors['title']}MONEY DISTRIBUTION:")
             total_money = sum(p.money for p in self.players)
             for player in self.players:
-                status = "Active" if not player.bankrupt else "Bankrupt"
+                status = f"{self.colors['success']}Active" if not player.bankrupt else f"{self.colors['error']}Bankrupt"
                 percentage = (player.money / total_money * 100) if total_money > 0 else 0
-                print(f"{player.name}: ${player.money} ({percentage:.1f}% of total) - {status}")
-        input("Press Enter to continue...")
-class BotStatistics:
-    def __init__(self):
-        # Track property purchases
-        self.properties_bought = 0
-        self.properties_declined = 0
-        self.money_spent_on_properties = 0
-        
-        # Track auction activity
-        self.auctions_won = 0
-        self.auctions_lost = 0
-        self.money_spent_on_auctions = 0
-        
-        # Track trades
-        self.trades_proposed = 0
-        self.trades_accepted = 0
-        self.trades_rejected = 0
-        
-        # Track building development
-        self.houses_purchased = 0
-        self.hotels_purchased = 0
-        self.money_spent_on_buildings = 0
-        
-        # Track mortgage activity
-        self.properties_mortgaged = 0
-        self.properties_unmortgaged = 0
-        
-        # Track jail activity
-        self.times_in_jail = 0
-        self.jail_time_served = 0  # Total turns in jail
-        self.paid_to_leave_jail = 0
-        self.used_jail_card = 0
-        
-        # Track income and expenses
-        self.rent_collected = 0
-        self.rent_paid = 0
-        self.tax_paid = 0
-        self.money_from_cards = 0
-        self.money_from_go = 0
-        
-        # Track movement
-        self.total_moves = 0
-        self.total_spaces_moved = 0
-        self.doubles_rolled = 0
-        
-        # Decision making
-        self.risky_decisions = 0  # Decisions where risk tolerance was the deciding factor
-        self.conservative_decisions = 0  # Decisions to save money or avoid risk
+                print(f"{self.colors['player']}{player.name}: {self.colors['money']}${player.money} ({percentage:.1f}% of total) - {status}")
+        input(f"{self.colors['prompt']}Press Enter to continue...{self.colors['reset']}")
 
-class GameStatistics:
-    def __init__(self, players):
-        self.game_start_time = time.time()
-        self.total_turns = 0
-        self.total_dice_rolled = 0
-        self.player_stats = {player.name: BotStatistics() for player in players}
-        
-        # Track property statistics
-        self.property_landings = {i: 0 for i in range(40)}
-        self.space_rents_collected = {i: 0 for i in range(40) if isinstance(players[0].game.board.spaces[i], Property)}
-        
-        # Game events
-        self.bankruptcies = []  # List of (turn, player_name, creditor)
-        self.monopolies_formed = []  # List of (turn, player_name, color)
-        self.highest_rent_paid = (0, None, None, None)  # (amount, payer, owner, property)
-        
-    def record_property_purchase(self, player_name, property, price):
-        stats = self.player_stats[player_name]
-        stats.properties_bought += 1
-        stats.money_spent_on_properties += price
-        
-    def record_property_declined(self, player_name):
-        self.player_stats[player_name].properties_declined += 1
-        
-    def record_auction_result(self, player_name, property, price, won=True):
-        stats = self.player_stats[player_name]
-        if won:
-            stats.auctions_won += 1
-            stats.money_spent_on_auctions += price
-        else:
-            stats.auctions_lost += 1
-            
-    def record_trade(self, proposer, responder, accepted):
-        self.player_stats[proposer].trades_proposed += 1
-        if accepted:
-            self.player_stats[proposer].trades_accepted += 1
-            self.player_stats[responder].trades_accepted += 1
-        else:
-            self.player_stats[proposer].trades_rejected += 1
-            
-    def record_building_purchase(self, player_name, is_hotel, price):
-        stats = self.player_stats[player_name]
-        if is_hotel:
-            stats.hotels_purchased += 1
-        else:
-            stats.houses_purchased += 1
-        stats.money_spent_on_buildings += price
-        
-    def record_mortgage(self, player_name, is_mortgage):
-        if is_mortgage:
-            self.player_stats[player_name].properties_mortgaged += 1
-        else:
-            self.player_stats[player_name].properties_unmortgaged += 1
-            
-    def record_jail(self, player_name, action=None):
-        stats = self.player_stats[player_name]
-        if action is None:  # Just went to jail
-            stats.times_in_jail += 1
-        elif action == "serve":
-            stats.jail_time_served += 1
-        elif action == "pay":
-            stats.paid_to_leave_jail += 1
-        elif action == "card":
-            stats.used_jail_card += 1
-            
-    def record_rent(self, payer, receiver, amount, property_position):
-        self.player_stats[payer].rent_paid += amount
-        self.player_stats[receiver].rent_collected += amount
-        self.space_rents_collected[property_position] += amount
-        
-        # Check if this is the highest rent paid
-        if amount > self.highest_rent_paid[0]:
-            self.highest_rent_paid = (amount, payer, receiver, property_position)
-            
-    def record_tax(self, player_name, amount):
-        self.player_stats[player_name].tax_paid += amount
-        
-    def record_card_money(self, player_name, amount):
-        self.player_stats[player_name].money_from_cards += amount
-        
-    def record_go_money(self, player_name):
-        self.player_stats[player_name].money_from_go += 200
-        
-    def record_move(self, player_name, spaces_moved, is_doubles=False):
-        stats = self.player_stats[player_name]
-        stats.total_moves += 1
-        stats.total_spaces_moved += spaces_moved
-        if is_doubles:
-            stats.doubles_rolled += 1
-        
-        self.total_dice_rolled += 1
-        
-    def record_property_landing(self, position):
-        self.property_landings[position] += 1
-        
-    def record_bankruptcy(self, turn, bankrupt_player, creditor=None):
-        self.bankruptcies.append((turn, bankrupt_player, creditor))
-        
-    def record_monopoly(self, turn, player_name, color):
-        self.monopolies_formed.append((turn, player_name, color))
-        
-    def record_decision(self, player_name, risky=True):
-        if risky:
-            self.player_stats[player_name].risky_decisions += 1
-        else:
-            self.player_stats[player_name].conservative_decisions += 1
-            
-    def display_statistics(self):
-        """Display comprehensive statistics of the game."""
-        game_duration = time.time() - self.game_start_time
-        
-        print("\n========== GAME STATISTICS ==========")
-        print(f"Game Duration: {game_duration:.1f} seconds")
-        print(f"Total Turns: {self.total_turns}")
-        print(f"Total Dice Rolls: {self.total_dice_rolled}")
-        
-        print("\n---------- PLAYER ACTIVITY STATISTICS ----------")
-        for player_name, stats in self.player_stats.items():
-            print(f"\n{player_name}'s Statistics:")
-            
-            # Property statistics
-            print(f"  Properties: Bought {stats.properties_bought}, Declined {stats.properties_declined}")
-            print(f"  Money spent on properties: ${stats.money_spent_on_properties}")
-            
-            # Auction statistics
-            print(f"  Auctions: Won {stats.auctions_won}, Lost {stats.auctions_lost}")
-            print(f"  Money spent on auctions: ${stats.money_spent_on_auctions}")
-            
-            # Trading statistics
-            if stats.trades_proposed > 0:
-                acceptance_rate = (stats.trades_accepted / stats.trades_proposed) * 100
-                print(f"  Trades: Proposed {stats.trades_proposed}, Accepted {stats.trades_accepted} ({acceptance_rate:.1f}%)")
-            else:
-                print(f"  Trades: None proposed")
-            
-            # Building statistics
-            print(f"  Buildings: Houses {stats.houses_purchased}, Hotels {stats.hotels_purchased}")
-            print(f"  Money spent on buildings: ${stats.money_spent_on_buildings}")
-            
-            # Mortgage statistics
-            print(f"  Mortgages: Properties mortgaged {stats.properties_mortgaged}, unmortgaged {stats.properties_unmortgaged}")
-            
-            # Jail statistics
-            print(f"  Jail: Times in jail {stats.times_in_jail}, turns served {stats.jail_time_served}")
-            print(f"  Jail exits: Paid fine {stats.paid_to_leave_jail}, used get out of jail card {stats.used_jail_card}")
-            
-            # Money flow
-            print(f"  Income: Rent collected ${stats.rent_collected}, GO passes ${stats.money_from_go}, Cards ${stats.money_from_cards}")
-            print(f"  Expenses: Rent paid ${stats.rent_paid}, Tax paid ${stats.tax_paid}")
-            
-            # Movement
-            avg_roll = stats.total_spaces_moved / max(1, stats.total_moves)
-            print(f"  Movement: Total moves {stats.total_moves}, Average roll {avg_roll:.1f}, Doubles {stats.doubles_rolled}")
-            
-            # Decision making
-            total_decisions = stats.risky_decisions + stats.conservative_decisions
-            if total_decisions > 0:
-                risk_percentage = (stats.risky_decisions / total_decisions) * 100
-                print(f"  Decisions: Risky {stats.risky_decisions} ({risk_percentage:.1f}%), Conservative {stats.conservative_decisions}")
-            else:
-                print(f"  Decisions: No recorded decisions")
-        
-        # Most landed on properties
-        print("\n---------- BOARD STATISTICS ----------")
-        most_landed = sorted(self.property_landings.items(), key=lambda x: x[1], reverse=True)[:5]
-        print("Most Landed On Spaces:")
-        for position, count in most_landed:
-            space = self.get_space_name(position)
-            print(f"  {space} (position {position}): {count} times")
-        
-        # Most profitable properties
-        if self.space_rents_collected:
-            most_profitable = sorted(self.space_rents_collected.items(), key=lambda x: x[1], reverse=True)[:5]
-            print("\nMost Profitable Properties:")
-            for position, amount in most_profitable:
-                if amount > 0:
-                    space = self.get_space_name(position)
-                    print(f"  {space} (position {position}): ${amount} collected")
-        
-        # Highest rent
-        if self.highest_rent_paid[0] > 0:
-            amount, payer, receiver, position = self.highest_rent_paid
-            property_name = self.get_space_name(position)
-            print(f"\nHighest Rent: ${amount} paid by {payer} to {receiver} for {property_name}")
-        
-        # Monopolies formed
-        if self.monopolies_formed:
-            print("\nMonopolies Formed:")
-            for turn, player, color in self.monopolies_formed:
-                print(f"  Turn {turn}: {player} completed {color} monopoly")
-        
-        # Bankruptcies
-        if self.bankruptcies:
-            print("\nBankruptcies:")
-            for turn, player, creditor in self.bankruptcies:
-                if creditor:
-                    print(f"  Turn {turn}: {player} went bankrupt to {creditor}")
-                else:
-                    print(f"  Turn {turn}: {player} went bankrupt to the bank")
-    
-    def get_space_name(self, position):
-        """Helper method to get the name of a space by position."""
-        space = self.get_board().spaces[position]
-        if isinstance(space, Property):
-            return space.name
-        return space
-        
-    def get_board(self):
-        """Helper method to get the board from the game."""
-        # This assumes the GameStatistics has access to the game object
-        # You may need to adjust this based on your implementation
-        return list(self.player_stats.values())[0].game.board if self.player_stats else None
 
-class Bot:
-    def __init__(self, player, game=None, parameters={ }):
-        self.player = player
-        self.game = game
-        
-        if parameters:
-            self.risk_tolerance = parameters['risk_tolerance']
-            self.property_focus = parameters['property_focus']
-            self.development_focus = parameters['development_focus']
-            self.cash_reserve_preference = parameters['cash_reserve_preference']
-            self.trade_willingness = parameters['trade_willingness']
-            self.monopoly_focus = parameters['monopoly_focus']
-            self.railroad_utility_interest = parameters['railroad_utility_interest']
-        else: 
-            # Bot personality parameters (all between 0.0 and 1.0)
-            self.risk_tolerance = random.random()  # How risky the bot is in decisions
-            self.property_focus = random.random()  # How much the bot values owning properties
-            self.development_focus = random.random()  # How much the bot prioritizes building houses
-            self.cash_reserve_preference = random.random()  # How much cash the bot tries to keep
-            self.trade_willingness = random.random()  # How open the bot is to trades
-            self.monopoly_focus = random.random()  # How focused on completing color sets
-            self.railroad_utility_interest = random.random()  # Interest in railroads and utilities
-        
-        # Generate a bot personality type based on parameters
-        self.personality_type = self._determine_personality()
-        
-    def _determine_personality(self):
-        """Set a personality type based on the randomized parameters"""
-        if self.risk_tolerance > 0.7 and self.property_focus > 0.7:
-            return "Aggressive Expander"
-        elif self.development_focus > 0.7 and self.monopoly_focus > 0.7:
-            return "Builder"
-        elif self.cash_reserve_preference > 0.7:
-            return "Conservative"
-        elif self.trade_willingness > 0.7:
-            return "Trader"
-        elif self.railroad_utility_interest > 0.7:
-            return "Utility Collector"
-        else:
-            return "Balanced Player"
-        
-    def decide_buy_property(self, property):
-        """Decide whether to buy a property."""
-        # Always buy if plenty of money, adjusted by cash reserve preference
-        min_reserve = 500 * self.cash_reserve_preference
-        if self.player.money > property.price + min_reserve:
-            return True
-        
-        # More likely to buy railroads and utilities if interested in them
-        if property.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-            return random.random() < 0.5 + (0.5 * self.railroad_utility_interest)
-        
-        # Check if we already own properties of this color, adjusted by monopoly focus
-        same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
-        if same_color_count > 0:
-            monopoly_chance = 0.5 + (0.3 * self.monopoly_focus) + (0.1 * same_color_count)
-            return random.random() < monopoly_chance
-        
-        # Base decision on risk tolerance, property focus and money available
-        purchase_chance = self.risk_tolerance * self.property_focus
-        return random.random() < purchase_chance and self.player.money > property.price * (1.0 + self.cash_reserve_preference)
-
-    def decide_auction_bid(self, property, current_bid):
-        """Decide how much to bid in an auction."""
-        # Maximum bid based on property focus and risk tolerance
-        max_willing_to_pay = property.price * (0.7 + self.property_focus * 0.6)
-        
-        # Bid higher if we already own properties of this color
-        same_color_count = sum(1 for p in self.player.properties if p.color == property.color)
-        if same_color_count > 0:
-            monopoly_bonus = self.monopoly_focus * 0.3 * same_color_count
-            max_willing_to_pay *= (1 + monopoly_bonus)
-        
-        # Keep a reserve based on preference
-        reserve_amount = 50 + (self.cash_reserve_preference * 200)
-        
-        # Don't bid more than we have minus reserve
-        max_willing_to_pay = min(max_willing_to_pay, self.player.money - reserve_amount)
-        
-        if max_willing_to_pay <= current_bid:
-            return 0  # Pass
-        
-        # Bid somewhere between current bid and max willing, based on risk tolerance
-        bid_range = max_willing_to_pay - current_bid
-        bid_percentage = 0.3 + (self.risk_tolerance * 0.5)  # More aggressive = higher bids
-        new_bid = current_bid + max(1, int(bid_range * bid_percentage))
-        return new_bid
- 
-    def decide_trade(self, my_property, their_property, cash_amount):
-        """Decide whether to accept a trade offer."""
-        # Low trade willingness means more likely to reject trades
-        if random.random() > self.trade_willingness * 1.5:  # Scale up to make trades happen
-            return False
-            
-        # Value of properties 
-        my_prop_value = my_property.price * (0.5 if my_property.status == PropertyStatus.MORTGAGED else 1.0)
-        their_prop_value = their_property.price * (0.5 if their_property.status == PropertyStatus.MORTGAGED else 1.0)
-        
-        # Check if we have almost a monopoly with their property
-        gain_monopoly = False
-        same_color_props = sum(1 for p in self.player.properties if p.color == their_property.color)
-        total_in_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == their_property.color)
-        if same_color_props + 1 == total_in_color:
-            gain_monopoly = True
-        
-        # Check if we're giving away part of a monopoly
-        lose_monopoly = False
-        my_color_props = sum(1 for p in self.player.properties if p.color == my_property.color)
-        total_in_my_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == my_property.color)
-        if my_color_props == total_in_my_color:
-            lose_monopoly = True
-        
-        # Adjust values based on strategic importance and monopoly focus
-        if gain_monopoly:
-            their_prop_value *= 1.0 + (self.monopoly_focus * 1.0)
-        if lose_monopoly:
-            my_prop_value *= 1.0 + (self.monopoly_focus * 1.0)
-        
-        # Consider the cash component
-        total_value_for_me = their_prop_value - my_prop_value + cash_amount
-        
-        # Also consider if we have enough cash, based on cash reserve preference
-        min_cash = 100 + (self.cash_reserve_preference * 300)
-        if cash_amount < 0 and self.player.money < -cash_amount + min_cash:
-            return False
-        
-        # Accept if it's a good deal or we're desperate for cash
-        return total_value_for_me > 0 or (cash_amount > 0 and self.player.money < min_cash)
-
-    def initiate_trade(self):
-        """Initiate a trade with another player to complete color sets."""
-        # Less willing traders initiate fewer trades
-        if random.random() > self.trade_willingness:
-            return None
-            
-        # Don't try to trade if we have very little money
-        min_cash = 100 + (self.cash_reserve_preference * 200)
-        if self.player.money < min_cash:
-            return None
-            
-        # Find properties that would complete our color sets
-        potential_monopolies = {}
-        
-        # Count how many properties we have of each color
-        owned_by_color = {}
-        for prop in self.player.properties:
-            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                if prop.color not in owned_by_color:
-                    owned_by_color[prop.color] = 0
-                owned_by_color[prop.color] += 1
-        
-        # Find how many are in each complete set
-        color_counts = {}
-        for space in self.game.board.spaces:
-            if isinstance(space, Property) and space.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                if space.color not in color_counts:
-                    color_counts[space.color] = 0
-                color_counts[space.color] += 1
-        
-        # Find colors where we're one property away from a monopoly
-        for color, count in owned_by_color.items():
-            if count == color_counts[color] - 1:
-                potential_monopolies[color] = color_counts[color]
-        
-        # If no near-monopolies but interested in railroads/utilities, try those
-        if not potential_monopolies and self.railroad_utility_interest > 0.6:
-            if any(p.color == PropertyColor.RAILROAD for p in self.player.properties):
-                # Try to get more railroads
-                potential_monopolies[PropertyColor.RAILROAD] = 4
-            elif any(p.color == PropertyColor.UTILITY for p in self.player.properties):
-                # Try to get more utilities
-                potential_monopolies[PropertyColor.UTILITY] = 2
-        
-        if not potential_monopolies:
-            return None  # No good trading opportunities
-        
-        # Find the missing properties and their owners
-        targets = []
-        for color in potential_monopolies:
-            # Find properties of this color not owned by us
-            for space in self.game.board.spaces:
-                if isinstance(space, Property) and space.color == color and space not in self.player.properties:
-                    if space.owner and space.owner != self.player and not space.owner.bankrupt:
-                        targets.append((space, space.owner))
-        
-        if not targets:
-            return None  # No targetable properties
-        
-        # Sort targets by value (higher is better)
-        targets.sort(key=lambda x: x[0].price, reverse=True)
-        
-        # Try each target
-        for target_prop, target_owner in targets:
-            # Find what we could offer in exchange
-            offer_props = []
-            for prop in self.player.properties:
-                # Don't offer properties from potential monopolies
-                if prop.color not in potential_monopolies:
-                    # Don't offer railroads or utilities unless we have extras or don't care about them
-                    if prop.color == PropertyColor.RAILROAD:
-                        railroad_count = sum(1 for p in self.player.properties if p.color == PropertyColor.RAILROAD)
-                        if railroad_count <= 1 and self.railroad_utility_interest > 0.5:
-                            continue
-                    elif prop.color == PropertyColor.UTILITY:
-                        utility_count = sum(1 for p in self.player.properties if p.color == PropertyColor.UTILITY)
-                        if utility_count <= 1 and self.railroad_utility_interest > 0.5:
-                            continue
-                            
-                    # Don't offer properties with houses/hotels
-                    if (hasattr(prop, 'houses') and prop.houses > 0) or (hasattr(prop, 'hotel') and prop.hotel):
-                        continue
-                        
-                    offer_props.append(prop)
-            
-            # No properties to offer
-            if not offer_props:
-                continue
-                
-            # Sort offer properties by how valuable they are to us (less valuable first)
-            offer_props.sort(key=lambda p: p.price)
-            
-            # Try to find a fair trade
-            for offer_prop in offer_props:
-                # Calculate value difference
-                value_diff = target_prop.price - offer_prop.price
-                
-                # Adjust for mortgaged properties
-                if target_prop.status == PropertyStatus.MORTGAGED:
-                    value_diff -= target_prop.mortgage_value * 0.1  # Unmortgaging cost
-                if offer_prop.status == PropertyStatus.MORTGAGED:
-                    value_diff += offer_prop.mortgage_value * 0.1  # They'd have to pay to unmortgage
-                
-                # Determine cash adjustment based on trade willingness
-                cash_amount = 0
-                max_cash_percentage = 0.3 + (self.trade_willingness * 0.5)  # More willing = more cash offered
-                
-                if value_diff > 0:  # We need to add cash
-                    cash_amount = min(value_diff, self.player.money * max_cash_percentage)
-                elif value_diff < 0:  # We should receive cash
-                    cash_amount = max(value_diff, -target_owner.money * max_cash_percentage)
-                
-                # Use game's color system for the trade offer
-                colors = self.game.colors
-                
-                # Make the trade offer
-                print(f"\n{colors['bot']}BOT TRADE ({self.personality_type}): {colors['player']}{self.player.name} {colors['title']}offers {colors['player']}{target_owner.name} {colors['title']}a trade:{colors['reset']}")
-                print(f"{colors['info']}Offering: {colors['property']}{offer_prop.name}{colors['reset']}")
-                print(f"{colors['info']}Requesting: {colors['property']}{target_prop.name}{colors['reset']}")
-                
-                if cash_amount > 0:
-                    print(f"{colors['info']}{self.player.name} offers {colors['money']}${int(cash_amount)}{colors['reset']} cash")
-                elif cash_amount < 0:
-                    print(f"{colors['info']}{self.player.name} requests {colors['money']}${int(-cash_amount)}{colors['reset']} cash")
-                
-                # For AI opponents, use their decide_trade method
-                if target_owner.is_bot:
-                    bot = target_owner.bot
-                    accepted = bot.decide_trade(target_prop, offer_prop, -cash_amount)
-                    print(f"{colors['bot']}Bot {target_owner.name} ({bot.personality_type}) is evaluating the trade...{colors['reset']}")
-                else:
-                    # For human players, ask for input
-                    accepted = input(f"\n{colors['prompt']}{target_owner.name}, do you accept this trade? (y/n): {colors['reset']}").lower() == 'y'
-                
-                if accepted:
-                    # Execute the trade
-                    self.player.properties.remove(offer_prop)
-                    target_owner.properties.remove(target_prop)
-                    
-                    self.player.properties.append(target_prop)
-                    target_owner.properties.append(offer_prop)
-                    
-                    offer_prop.owner = target_owner
-                    target_prop.owner = self.player
-                    
-                    if cash_amount > 0:
-                        self.player.pay(int(cash_amount))
-                        target_owner.receive(int(cash_amount))
-                    elif cash_amount < 0:
-                        target_owner.pay(int(-cash_amount))
-                        self.player.receive(int(-cash_amount))
-                    
-                    print(f"\n{colors['success']}Trade completed! {colors['player']}{self.player.name} {colors['success']}traded {colors['property']}{offer_prop.name} {colors['success']}for {colors['property']}{target_prop.name}{colors['reset']}.")
-                    if cash_amount != 0:
-                        who_paid = f"{colors['player']}{self.player.name}{colors['money']} paid" if cash_amount > 0 else f"{colors['player']}{target_owner.name}{colors['money']} paid"
-                        print(f"{who_paid} ${int(abs(cash_amount))}{colors['reset']}.")
-                    
-                    return True  # Successfully made a trade
-                else:
-                    print(f"{colors['error']}Trade rejected by {colors['player']}{target_owner.name}{colors['reset']}.")
-        
-            return False  # No trades were accepted
-        
-    def decide_jail_strategy(self):
-        """Decide how to handle being in jail."""
-        # Use get out of jail card if available
-        if self.player.jail_free_cards > 0:
-            return "2"
-        
-        # Pay the fine if we have plenty of money or are impatient (low cash reserve preference)
-        cash_threshold = 300 + (self.cash_reserve_preference * 500)
-        if self.player.money > cash_threshold:
-            return "3"
-        
-        # High risk tolerance players may pay to get out
-        if random.random() < self.risk_tolerance * 0.5:
-            return "3"
-        
-        # Otherwise, try to roll doubles
-        return "1"
-
-    def decide_house_purchases(self):
-        """Decide whether and where to buy houses."""
-        # Minimum cash reserve based on preference
-        min_reserve = 200 + (self.cash_reserve_preference * 300)
-        if self.player.money < min_reserve:
-            return None
-        
-        # Group properties by color
-        properties_by_color = {}
-        for prop in self.player.properties:
-            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                if prop.color not in properties_by_color:
-                    properties_by_color[prop.color] = []
-                properties_by_color[prop.color].append(prop)
-        
-        # Find complete sets
-        complete_sets = {}
-        for color, props in properties_by_color.items():
-            color_count = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == color)
-            if len(props) == color_count:
-                complete_sets[color] = props
-        
-        if not complete_sets:
-            return None
-        
-        # Prioritize based on position, current houses, and development focus
-        best_set = None
-        best_score = -1
-        
-        for color, props in complete_sets.items():
-            avg_position = sum(p.position for p in props) / len(props)
-            avg_houses = sum(p.houses for p in props) / len(props)
-            
-            # Score based on position, existing development, and affordability
-            position_score = avg_position / 40  # Normalize to 0-1
-            development_score = (3 - avg_houses) / 3  # Prefer less developed (more room to build)
-            affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
-            
-            # Adjust weight based on development focus
-            position_weight = 0.3 + (self.risk_tolerance * 0.2)  # Risky players care more about position
-            development_weight = 0.3
-            affordability_weight = 0.2 + (self.cash_reserve_preference * 0.2)  # Conservative players care more about affordability
-            
-            score = (position_score * position_weight + 
-                    development_score * development_weight + 
-                    affordability * affordability_weight) * self.development_focus
-            
-            if score > best_score:
-                best_score = score
-                best_set = props
-        
-        if not best_set:
-            return None
-        
-        # Find the property with the fewest houses
-        best_set.sort(key=lambda p: p.houses)
-        return best_set[0]
-
-    def decide_mortgage_property(self, amount_needed):
-        """Decide which property to mortgage to raise funds."""
-        if not self.player.properties:
-            return False
-
-        # First, look for properties with houses/hotels to sell
-        properties_with_buildings = [p for p in self.player.properties 
-                      if (hasattr(p, 'houses') and p.houses > 0) or 
-                         (hasattr(p, 'hotel') and p.hotel)]
-        
-        # Sort buildings by value (sell least valuable first)
-        properties_with_buildings.sort(key=lambda p: p.house_price)
-        
-        # Try selling houses/hotels first
-        properties_to_mortgage = []
-        raised_amount = 0
-        
-        for prop in properties_with_buildings:
-            if raised_amount >= amount_needed:
-                return True
-            if prop.hotel:
-                # Selling a hotel yields half the house price * 5
-                raised_amount += (prop.house_price // 2) * 5
-                prop.remove_hotel()
-
-            elif prop.houses > 0:
-                # Calculate how many houses we need to sell
-                houses_to_sell = min(prop.houses, 
-                        ((amount_needed - raised_amount) + (prop.house_price // 2) - 1) // (prop.house_price // 2))
-                raised_amount += (prop.house_price // 2) * houses_to_sell
-                for _ in range(int(houses_to_sell)):
-                    prop.remove_house()
-        
-        # If selling buildings wasn't enough, mortgage properties
-        # Sort properties by how valuable they are to keep (mortgaging least valuable first)
-        candidates = [p for p in self.player.properties 
-                if p.status != PropertyStatus.MORTGAGED and p.houses == 0 and not p.hotel]
-            
-        # Calculate a score for each property based on bot parameters
-        def property_value_score(prop):
-            # Higher score = less likely to mortgage
-            score = prop.price / 500.0  # Base value (0-1 range typically)
-            
-            # Bonus for properties in near-monopolies
-            same_color_count = sum(1 for p in self.player.properties if p.color == prop.color)
-            total_in_color = sum(1 for p in self.game.board.spaces if isinstance(p, Property) and p.color == prop.color)
-            monopoly_factor = same_color_count / total_in_color
-            score += monopoly_factor * self.monopoly_focus
-            
-            # Railroads and utilities get bonus if the bot values them
-            if prop.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                score += self.railroad_utility_interest * 0.5
-            
-            # Properties in developed areas are more valuable
-            score += (prop.position / 40.0) * self.risk_tolerance * 0.5
-            
-            return score
-            
-        # Sort so lowest scored (least valuable) properties are mortgaged first
-        candidates.sort(key=property_value_score)
-        
-        # Mortgage properties until we've raised enough money
-        for prop in candidates:
-            properties_to_mortgage.append(prop)
-            raised_amount += prop.mortgage_value
-            if raised_amount >= amount_needed:
-                print(f"\n{self.player.name} ({self.personality_type}) is mortgaging properties to pay off debts.")
-                for p in properties_to_mortgage:
-                    p.mortgage(self.player)
-                return True
-        
-        # If we get here, we couldn't raise enough money
-        return False
-
-    def decide_unmortgage_property(self):
-        """Decide which properties to unmortgage based on wealth and completing sets."""
-        # Only unmortgage if we have plenty of money, modified by cash reserve preference
-        min_reserve = 500 * (0.5 + self.cash_reserve_preference)
-        if self.player.money < min_reserve:
-            return None
-        
-        # Find all mortgaged properties
-        mortgaged_props = [p for p in self.player.properties if p.status == PropertyStatus.MORTGAGED]
-        
-        if not mortgaged_props:
-            return None
-        
-        # Count properties by color
-        props_by_color = {}
-        for prop in self.player.properties:
-            if prop.color not in props_by_color:
-                props_by_color[prop.color] = []
-            props_by_color[prop.color].append(prop)
-        
-        # Find total properties in each color group
-        color_counts = {}
-        for space in self.game.board.spaces:
-            if isinstance(space, Property):
-                if space.color not in color_counts:
-                    color_counts[space.color] = 0
-                color_counts[space.color] += 1
-        
-        # Score each mortgaged property for unmortgaging priority
-        def unmortgage_priority_score(prop):
-            score = 0
-            
-            # Higher score for properties that would complete a monopoly
-            if prop.color in props_by_color:
-                mortgaged_in_color = sum(1 for p in props_by_color[prop.color] if p.status == PropertyStatus.MORTGAGED)
-                owned_in_color = len(props_by_color[prop.color])
-                total_in_color = color_counts.get(prop.color, 0)
-                
-                # If this would complete a monopoly
-                if owned_in_color == total_in_color and mortgaged_in_color == 1:
-                    score += 5.0 * self.monopoly_focus
-                
-                # Bonus for color groups we have a lot of
-                monopoly_progress = owned_in_color / total_in_color
-                score += monopoly_progress * self.monopoly_focus * 2.0
-            
-            # Railroads and utilities get bonus based on interest
-            if prop.color in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                count = sum(1 for p in self.player.properties 
-                         if p.color == prop.color and p.status != PropertyStatus.MORTGAGED)
-                score += count * self.railroad_utility_interest
-            
-            # Properties in developed areas get a bonus based on risk tolerance
-            score += (prop.position / 40.0) * self.risk_tolerance
-            
-            return score
-        
-        # Sort mortgaged properties by priority score
-        mortgaged_props.sort(key=unmortgage_priority_score, reverse=True)
-        
-        # Try to unmortgage the highest priority property if we can afford it
-        for prop in mortgaged_props:
-            unmortgage_cost = prop.unmortgage()
-            affordable_reserve = self.player.money - unmortgage_cost - (300 * self.cash_reserve_preference)
-            
-            if affordable_reserve > 0:
-                print(f"{self.player.name} ({self.personality_type}) unmortgages {prop.name} for ${unmortgage_cost}")
-                self.player.pay(unmortgage_cost)
-                return prop
-        
-        return None
-
-    def make_move(self):
-        """Make all decisions for a turn."""
-        # If in jail, decide strategy
-        if self.player.jail_turns > 0:
-            return self.decide_jail_strategy()
-        
-        # Development is prioritized based on development focus
-        if random.random() < self.development_focus:
-            property = self.decide_house_purchases()
-            if property:
-                self.game.build_house_bot(self.player)
-        
-        # Trading frequency based on trade willingness
-        if random.random() < self.trade_willingness:
-            self.initiate_trade()
-        
-        # Unmortgage based on cash reserves and property focus
-        if random.random() < self.property_focus:
-            self.decide_unmortgage_property()
-        
-        # If low on money, consider mortgaging properties based on cash reserve preference
-        min_cash = 50 + (self.cash_reserve_preference * 200)
-        if self.player.money < min_cash:
-            self.decide_mortgage_property(min_cash - self.player.money)
-
-class NeuralNetwork(nn.Module):
-    def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
-        super(NeuralNetwork, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
-        )
-        
-    def forward(self, x):
-        return self.model(x)
-
-class NeuralBot(Bot):
-    def __init__(self, player):
-        super().__init__(player)
-        self.model = NeuralNetwork()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-        self.criterion = nn.MSELoss()
-        self.memory = []  # For experience replay
-        self.epsilon = 0.3  # For exploration vs exploitation
-        
-    def _get_state(self, board, players):
-        """Create a state representation for the neural network"""
-        state = []
-        
-        # Player information
-        state.append(self.player.money / 2000.0)  # Normalized money
-        state.append(self.player.position / 40.0)  # Normalized position
-        state.append(1.0 if self.player.jail_turns > 0 else 0.0)  # In jail?
-        
-        # Property ownership (one-hot encoding for each property)
-        for i in range(40):
-            space = board.spaces[i]
-            if isinstance(space, Property):
-                # 1 if player owns it, 0 otherwise
-                state.append(1.0 if space in self.player.properties else 0.0)
-                # 1 if property is mortgaged, 0 otherwise
-                state.append(1.0 if space in self.player.properties and space.status == PropertyStatus.MORTGAGED else 0.0)
-                # Number of houses normalized
-                if space in self.player.properties and hasattr(space, 'houses'):
-                    state.append(space.houses / 5.0)
-                else:
-                    state.append(0.0)
-            else:
-                # Not a property, add zeros as placeholders
-                state.append(0.0)
-                state.append(0.0)
-                state.append(0.0)
-        
-        # Add some opponent information
-        other_players = [p for p in players if p != self.player and not p.bankrupt]
-        avg_money = sum(p.money for p in other_players) / max(1, len(other_players))
-        state.append(avg_money / 2000.0)  # Normalized average opponent money
-        
-        # Pad or truncate to match input_dim
-        while len(state) < 100:
-            state.append(0.0)
-        
-        return torch.tensor(state, dtype=torch.float32)
-    
-    def decide_buy_property(self, property):
-        """Use neural network to decide whether to buy property"""
-        if random.random() < self.epsilon:  # Exploration
-            return super().decide_buy_property(property)
-        
-        # Get state and predict
-        state = self._get_state(None, [])  # Need to implement proper state capture
-        prediction = self.model(state)
-        buy_score = prediction[0].item()  # First output neuron for buying property
-        
-        return buy_score > 0.5
-    
-    def decide_auction_bid(self, property, current_bid):
-        """Use neural network to decide auction bid"""
-        if random.random() < self.epsilon:  # Exploration
-            return super().decide_auction_bid(property, current_bid)
-        
-        # Get state and predict
-        state = self._get_state(None, [])
-        prediction = self.model(state)
-        bid_percentage = prediction[1].item()  # Second output for bid percentage
-        
-        # Bid between current_bid and property.price * bid_percentage
-        max_bid = min(self.player.money * 0.8, property.price * 1.5)
-        new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
-        
-        return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
-    
-    def learn_from_experience(self, old_state, action, reward, new_state):
-        """Store experience and learn from it"""
-        self.memory.append((old_state, action, reward, new_state))
-        
-        # Only train after accumulating some experiences
-        if len(self.memory) > 100:
-            # Sample batch from memory
-            batch = random.sample(self.memory, min(32, len(self.memory)))
-            
-            for old_s, act, rew, new_s in batch:
-                # Simple Q-learning update
-                target = rew
-                if new_s is not None:  # Not a terminal state
-                    target += 0.95 * torch.max(self.model(new_s)).item()
-                
-                # Get current prediction and update the action's value
-                current = self.model(old_s)
-                target_f = current.clone()
-                target_f[0, act] = target
-                
-                # Train the model
-                self.optimizer.zero_grad()
-                loss = self.criterion(current, target_f)
-                loss.backward()
-                self.optimizer.step()
-    
-    def save_model(self, path="neural_bot_model.pth"):
-        """Save the neural network model"""
-        torch.save(self.model.state_dict(), path)
-    
-    def load_model(self, path="neural_bot_model.pth"):
-        """Load a previously trained model"""
-        self.model.load_state_dict(torch.load(path))
-        self.model.eval()
 
 # Run the game
 if __name__ == "__main__":
