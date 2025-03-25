@@ -12,6 +12,7 @@
 - add paremeters to bot
 - unit test
 - add strandard global variables
+- add folders for player and board
 
 ## In progress
 

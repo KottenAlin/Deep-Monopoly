@@ -1,266 +1,70 @@
 import random
-from enum import Enum
-import time
 import os
-from enum import Enum
 import numpy as np
-from game_models import Property, PropertyColor, PropertyStatus
+import matplotlib.pyplot as plt
 
-from Bot import Bot, parameters
+# methods for the game
+from game_models import Property, PropertyStatus
+from board import Board
+from player import Player
+
 
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
     '''
     
+    
+    
 num_games = 100
-
-class Player:
-    def __init__(self, name, token, is_bot=True, game=None, bot_parameters=None):
-        self.name = name
-        self.token = token
-        self.position = 0
-        self.money = 1500
-        self.properties = []
-        self.jail_turns = 0
-        self.jail_free_cards = 0
-        self.bankrupt = False
-        self.is_bot = is_bot
-        self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if is_bot else None
+game_stats = {
+        "games_played": 0,
+        "average_turns": 0,
+        "wins_by_player": {},  # Will track number of wins per player
+        "bankrupt_count": {},  # Will track number of bankruptcies per player
+        "turns": {},
+        "game_over_500_turns": 0,
+    }
     
-    def move(self, steps, board_size=40):
-        old_position = self.position
-        self.position = (self.position + steps) % board_size
-        # Check if player passed Go
-        if self.position < old_position and steps > 0:
-            return True  # Passed Go
-        return False
-    
-    def go_to_jail(self):
-        self.position = 10  # Jail position
-        self.jail_turns = 3
-    
-    def pay(self, amount):
-        if self.money >= amount:
-            self.money -= amount
-            return True
-        return False
-    
-    def receive(self, amount):
-        self.money += amount
+    #initiate risk tolerance for each bot
+bots_parameters = [
+        {
+            "risk_tolerance": 1.0,
+            "property_focus": 1.0,
+            "development_focus": 1.0,
+            "cash_reserve_preference": 1.0,
+            "trade_willingness": 1.0,
+            "monopoly_focus": 1.0,
+            "railroad_utility_interest": 1.0
+        },
+        {
+            "risk_tolerance": 1.0,
+            "property_focus": 1.0,
+            "development_focus": 1.0,
+            "cash_reserve_preference": 0.5,
+            "trade_willingness": 0.7,
+            "monopoly_focus": 1.0,
+            "railroad_utility_interest": 0
+        },
+        { 
+            "risk_tolerance": 0,
+            "property_focus": 0,
+            "development_focus": 0,
+            "cash_reserve_preference": 0,
+            "trade_willingness": 1,
+            "monopoly_focus": 0,
+            "railroad_utility_interest": 0
+        },
+        {
+            "risk_tolerance": 0.2,
+            "property_focus": 0.5,
+            "development_focus": 0.7,
+            "cash_reserve_preference": 0.7,
+            "trade_willingness": 0.5,
+            "monopoly_focus": 1,
+            "railroad_utility_interest": 0.3
+        }
         
-    def own_property(self, property):
-        self.properties.append(property)
-        
-    def display_status(self, board):
-
-        if self.properties:
-            property_list = []
-            for p in self.properties:
-                status = " (Mortgaged)" if p.status == PropertyStatus.MORTGAGED else '(' + str(p.houses) + ')'
-                property_list.append(f"{p.name}{status}")
-
-class Property:
-    def __init__(self, name, position, price, color, rents, mortgage_value, house_price=0):
-        self.name = name
-        self.position = position
-        self.price = price
-        self.color = color
-        self.rents = rents  # List of rents [base, 1 house, 2 houses, 3 houses, 4 houses, hotel]
-        self.mortgage_value = mortgage_value
-        self.house_price = house_price
-        self.owner = None
-        self.status = PropertyStatus.UNOWNED
-        self.houses = 0
-        self.hotel = False
-    
-    def calculate_rent(self, dice_roll=None):
-        if self.status == PropertyStatus.MORTGAGED:
-            return 0
-            
-        if self.color == PropertyColor.UTILITY and dice_roll:
-            # Utilities rent is based on dice roll
-            multiplier = 4 if self.owner.properties.count(self) == 1 else 10
-            return dice_roll * multiplier
-            
-        if self.color == PropertyColor.RAILROAD:
-            # Railroads rent increases based on how many railroads the owner has
-            railroad_count = sum(1 for prop in self.owner.properties if prop.color == PropertyColor.RAILROAD)
-            return self.rents[railroad_count - 1]
-            
-        # Regular property
-        if self.hotel:
-            return self.rents[5]
-        else:
-            return self.rents[self.houses]
-    
-    def mortgage(self, player):
-        if self.status == PropertyStatus.OWNED and self.houses == 0 and not self.hotel:
-            self.status = PropertyStatus.MORTGAGED
-            player.receive(self.mortgage_value)
-            return self.mortgage_value
-        return 0
-    
-    def unmortgage(self):
-        if self.status == PropertyStatus.MORTGAGED:
-            unmortgage_cost = int(self.mortgage_value)
-            self.status = PropertyStatus.OWNED
-            return unmortgage_cost
-        return 0
-    
-    def add_house_or_hotel(self):
-        
-        if self.status == PropertyStatus.OWNED and not self.hotel:
-            if  self.houses < 4 :
-                self.houses += 1
-                return True
-            elif self.houses == 4:
-                self.hotel = True
-                self.houses = 0
-                return True
-            return False
-    
-    def remove_hotel(self):
-        if self.hotel:
-            self.hotel = False
-            self.houses = 4
-            return True
-        return False
-    
-    def remove_house(self, house_count=1):
-        if self.houses > 0:
-            self.houses -= 1
-            return True
-        return False
-class Board:
-    def __init__(self):
-        self.spaces = self.create_board()
-        self.Chans_cards = self.create_Chans_cards()
-        self.Almänning_cards = self.create_Almänning_cards()
-        random.shuffle(self.Chans_cards)
-        random.shuffle(self.Almänning_cards)
-    
-    def create_board(self):
-        spaces = [None] * 40
-        
-        # Create properties
-        # Brown properties
-        spaces[1] = Property("Västerlånggatan", 1, 60, PropertyColor.BROWN, [2, 10, 30, 90, 160, 250], 30, 50)
-        spaces[3] = Property("Hornsgatan", 3, 60, PropertyColor.BROWN, [4, 20, 60, 180, 320, 450], 30, 50)
-        
-        # Light Blue properties
-        spaces[6] = Property("Folkungagatan", 6, 100, PropertyColor.LIGHT_BLUE, [6, 30, 90, 270, 400, 550], 50, 50)
-        spaces[8] = Property("Götgatan", 8, 100, PropertyColor.LIGHT_BLUE, [6, 30, 90, 270, 400, 550], 50, 50)
-        spaces[9] = Property("Ringvägen", 9, 120, PropertyColor.LIGHT_BLUE, [8, 40, 100, 300, 450, 600], 60, 50)
-        
-        # Pink properties
-        spaces[11] = Property("St. Eriksgatan", 11, 140, PropertyColor.PINK, [10, 50, 150, 450, 625, 750], 70, 100)
-        spaces[13] = Property("Odengatan", 13, 140, PropertyColor.PINK, [10, 50, 150, 450, 625, 750], 70, 100)
-        spaces[14] = Property("Valhallavägen", 14, 160, PropertyColor.PINK, [12, 60, 180, 500, 700, 900], 80, 100)
-        
-        # Orange properties
-        spaces[16] = Property("Sturegatan", 16, 180, PropertyColor.ORANGE, [14, 70, 200, 550, 750, 950], 90, 100)
-        spaces[18] = Property("Klaravägen", 18, 180, PropertyColor.ORANGE, [14, 70, 200, 550, 750, 950], 90, 100)
-        spaces[19] = Property("Narvravägen", 19, 200, PropertyColor.ORANGE, [16, 80, 220, 600, 800, 1000], 100, 100)
-        
-        # Red properties
-        spaces[21] = Property("Strandvägen", 21, 220, PropertyColor.RED, [18, 90, 250, 700, 875, 1050], 110, 150)
-        spaces[23] = Property("Kungsträdgårdsgatan", 23, 220, PropertyColor.RED, [18, 90, 250, 700, 875, 1050], 110, 150)
-        spaces[24] = Property("Hamngatan", 24, 240, PropertyColor.RED, [20, 100, 300, 750, 925, 1100], 120, 150)
-        
-        # Yellow properties
-        spaces[26] = Property("Vasagatan", 26, 260, PropertyColor.YELLOW, [22, 110, 330, 800, 975, 1150], 130, 150)
-        spaces[27] = Property("Kungsgatan", 27, 260, PropertyColor.YELLOW, [22, 110, 330, 800, 975, 1150], 130, 150)
-        spaces[29] = Property("Stureplan", 29, 280, PropertyColor.YELLOW, [24, 120, 360, 850, 1025, 1200], 140, 150)
-        
-        # Green properties
-        spaces[31] = Property("Gustav Adolfs Torg", 31, 300, PropertyColor.GREEN, [26, 130, 390, 900, 1100, 1275], 150, 200)
-        spaces[32] = Property("Drottninggatan", 32, 300, PropertyColor.GREEN, [26, 130, 390, 900, 1100, 1275], 150, 200)
-        spaces[34] = Property("Diplomatstaden", 34, 320, PropertyColor.GREEN, [28, 150, 450, 1000, 1200, 1400], 160, 200)
-        
-        # Dark Blue properties
-        spaces[37] = Property("Centrum", 37, 350, PropertyColor.DARK_BLUE, [35, 175, 500, 1100, 1300, 1500], 175, 200)
-        spaces[39] = Property("Normalmstorg", 39, 400, PropertyColor.DARK_BLUE, [50, 200, 600, 1400, 1700, 2000], 200, 200)
-        
-        # Railroads
-        spaces[5] = Property("Södra Station", 5, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[15] = Property("Östra station", 15, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[25] = Property("Centralstationen", 25, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        spaces[35] = Property("Norra Station", 35, 200, PropertyColor.RAILROAD, [25, 50, 100, 200], 100)
-        
-        # Utilities
-        spaces[12] = Property("Elvärket", 12, 150, PropertyColor.UTILITY, [0], 75)
-        spaces[28] = Property("Vattenverket", 28, 150, PropertyColor.UTILITY, [0], 75)
-        
-        # Non-property spaces (represented by strings)
-        spaces[0] = "Gå"
-        spaces[2] = "Almänning"
-        spaces[4] = "Inkomstskatt"
-        spaces[7] = "Chans"
-        spaces[10] = "Fängelse / På besök"
-        spaces[17] = "Almänning"
-        spaces[20] = "Fri Parkering"
-        spaces[22] = "Chans"
-        spaces[30] = "Gå i fängelse"
-        spaces[33] = "Almänning"
-        spaces[36] = "Chans"
-        spaces[38] = "Lyxskatt"
-        
-        return spaces
-    
-    def create_Chans_cards(self):
-        return [
-            "Advance to Go. (Collect $200)",
-            "Advance to Illinois Avenue. If you pass Go, collect $200.",
-            "Advance to St. Charles Place. If you pass Go, collect $200.",
-            "Advance to nearest Utility. If unowned, you may buy it from the Bank. If owned, throw dice and pay owner a total 10 times the amount thrown.",
-            "Advance to the nearest Railroad. If unowned, you may buy it from the Bank. If owned, pay owner twice the rental to which they are otherwise entitled.",
-            "Bank pays you dividend of $50.",
-            "Get Out of Jail Free.",
-            "Go Back 3 Spaces.",
-            "Go to Jail. Go directly to Jail, do not pass Go, do not collect $200.",
-            "Make general repairs on all your property. For each house pay $25. For each hotel pay $100.",
-            "Speeding fine $15.",
-            "Take a trip to Reading Railroad. If you pass Go, collect $200.",
-            "Take a walk on the Boardwalk. Advance to Boardwalk.",
-            "You have been elected Chairman of the Board. Pay each player $50.",
-            "Your building loan matures. Collect $150.",
-            "You have won a crossword competition. Collect $100."
-        ]
-    
-    def create_Almänning_cards(self):
-        return [
-            "Advance to Go. (Collect $200)",
-            "Bank error in your favor. Collect $200.",
-            "Doctor's fee. Pay $50.",
-            "From sale of stock you get $50.",
-            "Get Out of Jail Free.",
-            "Go to Jail. Go directly to jail, do not pass Go, do not collect $200.",
-            "Holiday fund matures. Receive $100.",
-            "Income tax refund. Collect $20.",
-            "It is your birthday. Collect $10 from each player.",
-            "Life insurance matures. Collect $100.",
-            "Pay hospital fees of $100.",
-            "Pay school fees of $50.",
-            "Receive $25 consultancy fee.",
-            "You are assessed for street repairs. $40 per house. $115 per hotel.",
-            "You have won second prize in a beauty contest. Collect $10.",
-            "You inherit $100."
-        ]
-    
-    def draw_Chans_card(self):
-        card = self.Chans_cards.pop(0)
-        self.Chans_cards.append(card)  # Put the card at the bottom of the deck
-        return card
-    
-    def draw_Almänning_card(self):
-        card = self.Almänning_cards.pop(0)
-        self.Almänning_cards.append(card)  # Put the card at the bottom of the deck
-        return card
-    
-    def get_property_at(self, position):
-        if position < 0 or position >= len(self.spaces):
-            return None
-        return self.spaces[position]
+    ]
 
 class MonopolyGame:
     def __init__(self, bot_count=2, bots_parameters=[]):
@@ -716,77 +520,7 @@ class MonopolyGame:
                     for player in bankrupt_players:
                         print(f"{player.name} is bankrupt.")
 
-def main():
-    # Global variable to track game statistics
-    global game_stats
-    
-    bot_count = int(input("Enter number of bots (0-8): "))
-    
-    game_stats = {
-        "games_played": 0,
-        "average_turns": 0,
-        "wins_by_player": {},  # Will track number of wins per player
-        "bankrupt_count": {},  # Will track number of bankruptcies per player
-        "turns": {},
-        "game_over_500_turns": 0,
-    }
-    
-    #initiate risk tolerance for each bot
-    bots_parameters = [
-        {
-            "risk_tolerance": 1.0,
-            "property_focus": 1.0,
-            "development_focus": 1.0,
-            "cash_reserve_preference": 1.0,
-            "trade_willingness": 1.0,
-            "monopoly_focus": 1.0,
-            "railroad_utility_interest": 1.0
-        },
-        {
-            "risk_tolerance": 1.0,
-            "property_focus": 1.0,
-            "development_focus": 1.0,
-            "cash_reserve_preference": 0.5,
-            "trade_willingness": 0.7,
-            "monopoly_focus": 1.0,
-            "railroad_utility_interest": 0
-        },
-        { 
-            "risk_tolerance": 0,
-            "property_focus": 0,
-            "development_focus": 0,
-            "cash_reserve_preference": 0,
-            "trade_willingness": 1,
-            "monopoly_focus": 0,
-            "railroad_utility_interest": 0
-        },
-        {
-            "risk_tolerance": 0.2,
-            "property_focus": 0.5,
-            "development_focus": 0.7,
-            "cash_reserve_preference": 0.7,
-            "trade_willingness": 0.5,
-            "monopoly_focus": 1,
-            "railroad_utility_interest": 0.3
-        }
-        
-    ]
-    
-    for i in range(bot_count):
-        #risk_tolerance = random.random()
-        #risk_tolerances.append(risk_tolerance)
-        #print(f"Bot {i+1} risk tolerance: {risk_tolerance:.2f}")
-        game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot
-        game_stats["bankrupt_count"][f"Bot {i+1}"] = 0  # Initialize bankrupt count for each bot
-    
-    for i in range(100):  # play 100 games
-        print(f"Game {i+1} of 100")
-        game = MonopolyGame(bot_count=bot_count, bots_parameters=bots_parameters)
-        game.play_game()
-
-        # Update statistics
-        game_stats["games_played"] += 1
-
+def display_statistics():
     #print overall statistics
     print("\n===== OVERALL GAME STATISTICS =====")
     print(f"Total games played: {game_stats['games_played']}")
@@ -808,6 +542,25 @@ def main():
         print(f"BOT {i+1} PARAMETERS:")
         for key, value in parameters.items():
             print(f"{key}: {value:.2f}")
+
+def main():
+    # Global variable to track game statistics
+    global game_stats
+    
+    bot_count = int(input("Enter number of bots (0-8): "))
+
+    for i in range(bot_count):
+        game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot
+        game_stats["bankrupt_count"][f"Bot {i+1}"] = 0  # Initialize bankrupt count for each bot
+    
+    for i in range(num_games):  # play 100 games
+        print(f"Game {i+1} of 100")
+        game = MonopolyGame(bot_count=bot_count, bots_parameters=bots_parameters)
+        game.play_game()
+        # Update statistics
+        game_stats["games_played"] += 1
+
+    display_statistics()
     
 # Run the game
 if __name__ == "__main__":
