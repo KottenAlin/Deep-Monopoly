@@ -437,6 +437,9 @@ class Board:
 
 class MonopolyGame:
     def __init__(self):
+        #clear screan
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
         # Initialize colorama for cross-platform color support
         init(autoreset=True)  # Automatically reset colors after each print
         
@@ -461,16 +464,21 @@ class MonopolyGame:
         
         # Get player count with default value handling
         print(f"{self.colors['title']}=== MONOPOLY GAME SETUP ===")
-        player_count_input = input(f"{self.colors['prompt']}Enter number of players (default 0): {self.colors['reset']}").strip()
-        player_count = int(player_count_input) if player_count_input else 0
-        
-        # Get bot count with default value handling
-        bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
-        bot_count = int(bot_count_input) if bot_count_input else 2
+        try:
+            player_count_input = input(f"{self.colors['prompt']}Enter number of players (default 0): {self.colors['reset']}").strip()
+            player_count = int(player_count_input) if player_count_input else 0
+            
+            # Get bot count with default value handling
+            bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
+            bot_count = int(bot_count_input) if bot_count_input else 2
+        except ValueError:
+            time.sleep(2)
+            MonopolyGame()
         
         if bot_count + player_count < 2:
             print(f"{self.colors['error']}Not enough players to start the game.")
-            self.game_over = True
+            time.sleep(2)
+            MonopolyGame()
         
         self.board = Board()
         self.players = self.create_players(player_count, bot_count)
@@ -2112,7 +2120,7 @@ class Bot:
                 houses_to_sell = min(prop.houses, 
                         ((amount_needed - raised_amount) + (prop.house_price // 2) - 1) // (prop.house_price // 2))
                 raised_amount += (prop.house_price // 2) * houses_to_sell
-                for _ in range(houses_to_sell):
+                for _ in range(int(houses_to_sell)):
                     prop.remove_house()
         
         # If selling buildings wasn't enough, mortgage properties
