@@ -1,9 +1,11 @@
 from Bot import Bot, parameters
-from game_models import PropertyStatus
+from game_models import PropertyStatus, Property
+from colorama import Fore, Style, Back
+
 
 
 class Player:
-    def __init__(self, name, token, is_bot=True, game=None, bot_parameters=parameters):
+    def __init__(self, name, token, is_bot=False, game=None, bot_parameters=parameters):
         
         self.name = name
         self.token = token
@@ -15,6 +17,7 @@ class Player:
         self.bankrupt = False
         self.is_bot = is_bot
         self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if is_bot else None
+    
     
     def move(self, steps, board_size=40):
         old_position = self.position
@@ -40,10 +43,54 @@ class Player:
     def own_property(self, property):
         self.properties.append(property)
         
-    def display_status(self, board):
 
+    def display_status(self, board):
+        colors = {
+            'title': Fore.CYAN + Style.BRIGHT,
+            'prompt': Fore.YELLOW,
+            'info': Fore.WHITE,
+            'success': Fore.GREEN,
+            'warning': Fore.YELLOW,
+            'error': Fore.RED,
+            'money': Fore.GREEN + Style.BRIGHT,
+            'property': Fore.MAGENTA,
+            'player': Fore.BLUE + Style.BRIGHT,
+            'dice': Fore.CYAN,
+            'rent': Fore.RED + Style.BRIGHT,
+            'jail': Fore.WHITE + Back.BLACK,
+            'reset': Style.RESET_ALL
+        }
+        
+        print(f"\n{colors['player']}{self.name} ({self.token}):{colors['reset']}")
+        
+        # Display position with appropriate color based on space type
+        space = board.spaces[self.position]
+        if isinstance(space, Property):
+            print(f"  {colors['info']}Position: {self.position} ({colors['property']}{space.name}{colors['reset']})")
+        else:
+            print(f"  {colors['info']}Position: {self.position} ({colors['info']}{space}{colors['reset']})")
+        
+        # Display money with money color
+        print(f"  {colors['info']}Money: {colors['money']}${self.money}{colors['reset']}")
+        
+        # Display properties with appropriate formatting
+        print(f"  {colors['info']}Properties: ", end="")
         if self.properties:
             property_list = []
             for p in self.properties:
-                status = " (Mortgaged)" if p.status == PropertyStatus.MORTGAGED else '(' + str(p.houses) + ')'
-                property_list.append(f"{p.name}{status}")
+                if p.status == PropertyStatus.MORTGAGED:
+                    status = f" ({colors['warning']}Mortgaged{colors['reset']})"
+                elif hasattr(p, 'houses') and p.houses > 0:
+                    status = f" ({colors['success']}{p.houses} houses{colors['reset']})"
+                elif hasattr(p, 'hotel') and p.hotel:
+                    status = f" ({colors['success']}Hotel{colors['reset']})"
+                else:
+                    status = ""
+                property_list.append(f"{colors['property']}{p.name}{status}")
+            print(', '.join(property_list))
+        else:
+            print(f"{colors['info']}None")
+        
+        # Display jail status
+        if self.jail_turns > 0:
+            print(f"  {colors['jail']}In jail: {self.jail_turns} turns remaining{colors['reset']}")

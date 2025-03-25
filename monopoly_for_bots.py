@@ -373,8 +373,7 @@ class MonopolyGame:
         if player.bankrupt:
             self.next_player()
             return
-        
-        player.display_status(self.board)
+        #player.display_status(self.board)
         
         # Check if player is in jail
         in_jail = self.handle_jail(player)

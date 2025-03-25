@@ -3,10 +3,10 @@ from game_models import Property, PropertyColor, PropertyStatus
 import torch.nn as nn
 import torch.optim as optim
 from enum import Enum
+import torch
 
 
 global parameters
-
 parameters = {
         "risk_tolerance": random.random(),
         "property_focus": random.random(),
@@ -15,11 +15,10 @@ parameters = {
         "trade_willingness": random.random(),
         "monopoly_focus": random.random(),
         "railroad_utility_interest": random.random()
-    }
-    
+    } 
 
 class Bot:
-    def __init__(self, player, game=None, parameters=parameters, display=True, property=None):
+    def __init__(self, player, game, parameters=parameters, display=True, property=None):
         self.player = player
         self.game = game
         self.display = display

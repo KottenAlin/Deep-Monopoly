@@ -106,7 +106,20 @@ class MonopolyGame:
                     self.display_statistics()
             self.transfer_assets(player, recipient)
         else:
-            if player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
+            if not player.is_bot:
+                choice = input(f"{self.colors['prompt']}You are bankrupt! Do you want to mortgage properties? (y/n): {self.colors['reset']}").lower()
+                if choice == 'y':
+                    while player.money < amount_due:
+                        self.property_management(player)
+                        # check if all properties are mortgaged
+                        if all(prop.status == PropertyStatus.MORTGAGED for prop in player.properties):
+                            print(f"{self.colors['error']}All properties are mortgaged!")
+                            player.bankrupt = True
+                            return False
+                        
+                    player.pay(amount_due)
+                    return True
+            elif player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
                 player.pay(amount_due)
                 return True
             else:
@@ -714,6 +727,8 @@ class MonopolyGame:
                 self.property_management(player)
             elif choice == "3":
                 self.display_all_properties()
+                if input(f"{self.colors['prompt']}Display statistics? (y/n) {self.colors['reset']}") == 'y':
+                    self.display_statistics()
                 continue
             else:
                 break
