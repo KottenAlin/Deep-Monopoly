@@ -17,6 +17,7 @@ parameters = {
         "railroad_utility_interest": random.random()
     } 
 
+
 class Bot:
     def __init__(self, player, game, parameters=parameters, display=True, property=None):
         self.player = player
@@ -33,6 +34,7 @@ class Bot:
 
         # Generate a bot personality type based on parameters
         self.personality_type = self._determine_personality()
+        
         
     def _determine_personality(self):
         """Set a personality type based on the randomized parameters"""
