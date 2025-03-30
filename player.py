@@ -1,11 +1,13 @@
-from Bot import Bot, parameters
+from Bot import Bot, NeuralBot, parameters
 from game_models import PropertyStatus, Property
 from colorama import Fore, Style, Back
 
 
 
+
 class Player:
-    def __init__(self, name, token, is_bot=False, game=None, bot_parameters=parameters):
+    def __init__(self, name, token, is_bot=False, game=None, bot_parameters=parameters, bot_type='default'):
+        '''  '''
         
         self.name = name
         self.token = token
@@ -16,7 +18,10 @@ class Player:
         self.jail_free_cards = 0
         self.bankrupt = False
         self.is_bot = is_bot
-        self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if is_bot else None
+        
+        if is_bot:
+            self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if bot_type == 'default' else NeuralBot(self, game=game, display=False)
+            self.bot_type = bot_type
     
     
     def move(self, steps, board_size=40):

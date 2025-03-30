@@ -1,6 +1,6 @@
 import random
 import os
-import numpy as np
+#import numpy as np
 import matplotlib.pyplot as plt
 
 # methods for the game
@@ -12,9 +12,6 @@ from player import Player
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
     '''
-    
-    
-    
 num_games = 100
 game_stats = {
         "games_played": 0,
@@ -67,28 +64,41 @@ bots_parameters = [
     ]
 
 class MonopolyGame:
-    def __init__(self, bot_count=2, bots_parameters=[]):
-        
-        self.botcount = bot_count
+    def __init__(self, bot_count=2, neural_bot_count=2, bots_parameters=[]):
         
         if bot_count < 2:
             print("Not enough players to start the game.")
             self.game_over = True
         
         self.board = Board()
-        self.players = self.create_bots(bot_count, bots_parameters)
+        self.players = self.create_bots(bot_count, neural_bot_count, bots_parameters)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
+        
+        # Initialize neural bots if there are any
+        self.turn_count = 0
+        if neural_bot_count > 0:
+            #print(f"{self.colors['title']}Initializing neural network models for bots...")
+            for player in self.players:
+                if player.is_bot and player.bot.__class__.__name__ == "NeuralBot":
+                    #print(f"{self.colors['bot']}Initializing model for {player.name}")
+                    player.bot.game = self  # Ensure the bot has a reference to the game
+                    player.bot.initialise_model()  # Initialize the neural network model
+                    #except Exception as e:
+                        #print(f"{self.colors['error']}Error initializing model: {e}")
+            #print(f"{self.colors['success']}All neural bot models initialized successfully!")
     
-    def create_bots(self, bot_count, bots_parameters=[]):
-        tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
+    def create_bots(self, bot_count, neural_bot_count , bots_parameters=[]):
         players = []
 
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
-            player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i])
+            if i < neural_bot_count:
+                player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i], bot_type='neural')
+            else:
+                player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i])
             players.append(player)
             
         return players
@@ -547,6 +557,11 @@ def main():
     global game_stats
     
     bot_count = int(input("Enter number of bots (0-8): "))
+    neural_bot_count = int(input(F"how many should be neural bots? (0-{bot_count}): "))
+    
+    if bot_count < 2 or bot_count > 8:
+        print("Invalid number of bots. Please enter a number between 0 and 8.")
+        return
 
     for i in range(bot_count):
         game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot
@@ -554,7 +569,7 @@ def main():
     
     for i in range(num_games):  # play 100 games
         print(f"Game {i+1} of 100")
-        game = MonopolyGame(bot_count=bot_count, bots_parameters=bots_parameters)
+        game = MonopolyGame(bot_count=bot_count, neural_bot_count=neural_bot_count, bots_parameters=bots_parameters)
         game.play_game()
         # Update statistics
         game_stats["games_played"] += 1
