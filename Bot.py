@@ -661,10 +661,93 @@ class NeuralBot(Bot):
         
         # Get state and predict
         state = self._get_state(self.game.board, self.game.players)
-        prediction = self.model.forward(state.unsqueeze(0))  # Add batch dimension
-        house_score = prediction[0][2].item()  # Third output for house purchase score
-
-        return house_score > 0.5
+        prediction = self.model.forward(state.unsqueeze(0))
+        house_purchase_score = prediction[0][2].item()  # Third output for house purchase desire
+        
+        if house_purchase_score < 0.5:  # If neural network decides not to build houses
+            return None
+            
+        # If we want to build houses, use the parent logic to determine which property
+        # Group properties by color
+        properties_by_color = {}
+        for prop in self.player.properties:
+            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                if prop.color not in properties_by_color:
+                    properties_by_color[prop.color] = []
+                properties_by_color[prop.color].append(prop)
+        
+        # Find complete sets
+        complete_sets = {}
+        for color, props in properties_by_color.items():
+            color_count = sum(1 for p in self.game.board.spaces if hasattr(p, 'color') and p.color == color)
+            if len(props) == color_count:
+                complete_sets[color] = props
+        
+        if not complete_sets:
+            return None
+        
+        # Prioritize based on position, current houses, and development focus
+        best_set = None
+        best_score = -1
+        
+        for color, props in complete_sets.items():
+            # Use neural network to evaluate property sets if not exploring
+            if random.random() >= self.epsilon:
+            # Create features for each property set
+                avg_position = sum(p.position for p in props) / len(props)
+                avg_houses = sum(p.houses for p in props) / len(props)
+                affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
+            
+            # Create a temporary state representation
+            temp_state = self._get_state(self.game.board, self.game.players)
+            
+            # Add specific features about this property set
+            # (Assume these positions in the state vector are available)
+            # This creates a unique state representation for each property set
+            temp_state_modified = temp_state.clone()
+            temp_state_modified[-5] = avg_position / 40.0  # Normalized position
+            temp_state_modified[-4] = avg_houses / 5.0  # Normalized houses
+            temp_state_modified[-3] = affordability  # Affordability
+            temp_state_modified[-2] = len(props) / 8.0  # Normalized set size
+            temp_state_modified[-1] = props[0].house_price / 200.0  # Normalized house price
+            
+            # Get neural network's evaluation of this property set
+            prediction = self.model.forward(temp_state_modified.unsqueeze(0))
+            property_set_score = prediction[0][8].item()  # Use 8th output for property set evaluation
+            
+            if property_set_score > best_score:
+                best_score = property_set_score
+                best_set = props
+            else:
+                # Fall back to heuristic approach when exploring
+                avg_position = sum(p.position for p in props) / len(props)
+                avg_houses = sum(p.houses for p in props) / len(props)
+            
+            # Score based on position, existing development, and affordability
+            position_score = avg_position / 40  # Normalize to 0-1
+            development_score = (3 - avg_houses) / 3  # Prefer less developed (more room to build)
+            affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
+            
+            # Adjust weight based on development focus
+            position_weight = 0.3 + (self.risk_tolerance * 0.2)
+            development_weight = 0.3
+            affordability_weight = 0.2 + (self.cash_reserve_preference * 0.2)
+            
+            score = (position_score * position_weight + 
+                development_score * development_weight + 
+                affordability * affordability_weight) * self.development_focus
+            
+            if score > best_score:
+                best_score = score
+                best_set = props
+            best_set = props
+        
+        if not best_set:
+            return None
+            
+        # Find the property with the fewest houses
+        best_set.sort(key=lambda p: p.houses)
+        return best_set[0]
         
     def decide_jail_strategy(self):
         if random.random() < self.epsilon:
@@ -756,6 +839,10 @@ class NeuralBot(Bot):
         
         self.learn_from_experience(old_state, action, reward, new_state)
         
+        if len(self.losses) % 100 == 0 and len(self.losses) > 0:
+            self.display_loss()
+            input("Press Enter to continue...")
+        
     def calculate__reward(self, old_state, new_state):
         """Calculate the reward based on the action taken"""
         reward = 0
@@ -821,10 +908,10 @@ class NeuralBot(Bot):
                 # Simple Q-learning update
                 target = rew
                 if new_s is not None:  # Not a terminal state
-                    target += 0.95 * torch.max(self.model(new_s)).item() # Get max Q-value for new state
+                    target += 0.95 * torch.max(self.model(new_s.unsqueeze(0))).item() # Get max Q-value for new state
                 
                 # Get current prediction and update the action's value
-                current = self.model(old_s)
+                current = self.model(old_s.unsqueeze(0))  # Add batch dimension
                 target_f = current.clone()
                 target_f[0, act] = target # Update the Q-value for the action taken
                 
@@ -837,6 +924,7 @@ class NeuralBot(Bot):
     
     def display_loss(self):
         """Display the training loss"""
+        print(self.losses)
         plt.plot(self.losses)
         plt.title("Training Loss")
         plt.xlabel("Epoch")

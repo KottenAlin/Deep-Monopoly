@@ -6,6 +6,7 @@ from colorama import init, Fore, Back, Style
 from game_models import Property, PropertyColor, PropertyStatus
 from board import Board
 from player import Player
+from statistics import display_statistics
 
 class MonopolyGame:
     def __init__(self):
@@ -124,7 +125,7 @@ class MonopolyGame:
             print(f"\n{self.colors['error']}{player.name} is bankrupt!")
             player.bankrupt = True
             if input("display statistics? (y/n): ").lower() == 'y':
-                    self.display_statistics()
+                    display_statistics(self)
             self.transfer_assets(player, recipient)
         else:
             if not player.is_bot:
@@ -147,7 +148,7 @@ class MonopolyGame:
                 player.bankrupt = True
                 print(f"\n{self.colors['error']}{player.name} is bankrupt!")
                 if input("display statistics? (y/n): ").lower() == 'y':
-                    self.display_statistics()
+                    display_statistics(self)
                 self.transfer_assets(player, recipient)
         return False
         
@@ -749,7 +750,7 @@ class MonopolyGame:
             elif choice == "3":
                 self.display_all_properties()
                 if input(f"{self.colors['prompt']}Display statistics? (y/n) {self.colors['reset']}") == 'y':
-                    self.display_statistics()
+                    display_statistics(self)
                 continue
             else:
                 break
@@ -864,211 +865,12 @@ class MonopolyGame:
             
             if turns % 100 == 0 and turns != 0:
                 if input(f"{self.colors['prompt']}Display statistics? (y/n): {self.colors['reset']}").lower() == 'y':
-                    self.display_statistics() # Display statistics if player chooses to
+                    display_statistics(self) # Display statistics if player chooses to
             turns += 1
             #time.sleep(1)  # Small pause between turns
         if input(f"{self.colors['prompt']}Display statistics? (y/n): {self.colors['reset']}").lower() == 'y':
-            self.display_statistics()
+            display_statistics(self)
         
-    def display_statistics(self):
-        # Display a comprehensive property and building report
-        print(f"\n{self.colors['title']}=== PROPERTY AND BUILDING REPORT ===")
-        active_players = [p for p in self.players if not p.bankrupt]
-
-        # Count total houses and hotels on the board
-        total_houses = 0
-        total_hotels = 0
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                if hasattr(space, 'houses') and space.houses > 0:
-                    total_houses += space.houses
-                if hasattr(space, 'hotel') and space.hotel:
-                    total_hotels += 1
-
-        print(f"{self.colors['info']}Total buildings on board: {self.colors['success']}{total_houses} houses, {total_hotels} hotels")
-
-        # Display all properties grouped by color
-        color_groups = {}
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                if space.color not in color_groups:
-                    color_groups[space.color] = []
-                color_groups[space.color].append(space)
-
-        # Print properties by color group
-        for color, properties in color_groups.items():
-            print(f"\n{self.colors['title']}{color.value} Properties:")
-            for prop in properties:
-                owner_info = f"Owned by {self.colors['player']}{prop.owner.name}" if prop.owner else f"{self.colors['info']}Unowned"
-                status_info = f" ({self.colors['warning']}Mortgaged{self.colors['reset']})" if prop.status == PropertyStatus.MORTGAGED else ""
-                
-                building_info = ""
-                if hasattr(prop, 'houses') and prop.houses > 0:
-                    building_info = f", {prop.houses} houses"
-                if hasattr(prop, 'hotel') and prop.hotel:
-                    building_info = f", {self.colors['success']}Hotel"
-                    
-                rent_info = f", Current rent: {self.colors['rent']}${prop.calculate_rent()}" if prop.owner else ""
-                print(f"{self.colors['property']}  {prop.name} - {self.colors['money']}${prop.price} - {owner_info}{status_info}{building_info}{rent_info}")
-
-        # Print player property summaries
-        print(f"\n{self.colors['title']}Player Property Summaries:")
-        for player in active_players:
-            property_count = len(player.properties)
-            house_count = sum(p.houses for p in player.properties if hasattr(p, 'houses'))
-            hotel_count = sum(1 for p in player.properties if hasattr(p, 'hotel') and p.hotel)
-            mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
-            
-            print(f"{self.colors['player']}{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged, {self.colors['money']}${player.money}")
-
-        #display all bankrupt players
-        bankrupt_players = [p for p in self.players if p.bankrupt]
-        if bankrupt_players:
-            print(f"\n{self.colors['title']}=== BANKRUPT PLAYERS ===")
-            for player in bankrupt_players:
-                print(f"{self.colors['error']}{player.name} is bankrupt.")
-                
-        if input(f"{self.colors['prompt']}Display extended statistics? (y/n): {self.colors['reset']}").lower() == 'y':
-            self.display_extended_statistics()
-                
-    def display_extended_statistics(self):
-        """Display more comprehensive game statistics."""
-        active_players = [p for p in self.players if not p.bankrupt]
-        bankrupt_players = [p for p in self.players if p.bankrupt]
-        
-        print(f"\n{self.colors['title']}=== EXTENDED GAME STATISTICS ===\n")
-        
-        # Player Rankings by Net Worth
-        print(f"{self.colors['title']}PLAYER RANKINGS BY NET WORTH:")
-        player_values = {}
-        for p in self.players:
-            total_value = p.money
-            for prop in p.properties:
-                total_value += prop.price
-                if hasattr(prop, 'houses') and prop.houses > 0:
-                    total_value += prop.house_price * prop.houses
-                if hasattr(prop, 'hotel') and prop.hotel:
-                    total_value += prop.house_price * 5
-                if prop.status == PropertyStatus.MORTGAGED:
-                    total_value -= prop.mortgage_value * 0.1  # Unmortgaging cost
-            player_values[p.name] = total_value
-        
-        # Sort players by net worth and display ranking
-        for i, (name, value) in enumerate(sorted(player_values.items(), key=lambda x: x[1], reverse=True)):
-            status = f"{self.colors['success']}ACTIVE" if next((p for p in active_players if p.name == name), None) else f"{self.colors['error']}BANKRUPT"
-            print(f"{i+1}. {self.colors['player']}{name}: {self.colors['money']}${value:.2f} ({status}{self.colors['reset']})")
-        
-        # Property Statistics
-        print(f"\n{self.colors['title']}PROPERTY STATISTICS:")
-        property_stats = {
-            "total": 0,
-            "owned": 0,
-            "unowned": 0,
-            "mortgaged": 0,
-            "developed": 0,
-            "houses": 0,
-            "hotels": 0
-        }
-        
-        # Most valuable property
-        most_valuable_prop = None
-        highest_rent = 0
-        
-        # Most developed color group
-        color_development = {}
-        
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                property_stats["total"] += 1
-                
-                if space.owner:
-                    property_stats["owned"] += 1
-                    if space.status == PropertyStatus.MORTGAGED:
-                        property_stats["mortgaged"] += 1
-                    
-                    # Track houses/hotels
-                    if hasattr(space, 'houses') and space.houses > 0:
-                        property_stats["developed"] += 1
-                        property_stats["houses"] += space.houses
-                    if hasattr(space, 'hotel') and space.hotel:
-                        property_stats["developed"] += 1
-                        property_stats["hotels"] += 1
-                    
-                    # Track rent values
-                    current_rent = space.calculate_rent()
-                    if current_rent > highest_rent:
-                        highest_rent = current_rent
-                        most_valuable_prop = space
-                    
-                    # Track color group development
-                    if space.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                        if space.color not in color_development:
-                            color_development[space.color] = {"houses": 0, "hotels": 0, "properties": 0}
-                        color_development[space.color]["properties"] += 1
-                        if hasattr(space, 'houses'):
-                            color_development[space.color]["houses"] += space.houses
-                        if hasattr(space, 'hotel') and space.hotel:
-                            color_development[space.color]["hotels"] += 1
-                else:
-                    property_stats["unowned"] += 1
-        
-        print(f"{self.colors['info']}Total Properties: {property_stats['total']}")
-        print(f"{self.colors['info']}Owned: {self.colors['success']}{property_stats['owned']} ({property_stats['owned']/property_stats['total']*100:.1f}%)")
-        print(f"{self.colors['info']}Unowned: {self.colors['warning']}{property_stats['unowned']}")
-        print(f"{self.colors['info']}Mortgaged: {self.colors['warning']}{property_stats['mortgaged']} ({property_stats['mortgaged']/property_stats['owned']*100:.1f}% of owned)")
-        print(f"{self.colors['info']}Properties with Houses/Hotels: {self.colors['success']}{property_stats['developed']}")
-        print(f"{self.colors['info']}Total Houses on Board: {self.colors['success']}{property_stats['houses']}")
-        print(f"{self.colors['info']}Total Hotels on Board: {self.colors['success']}{property_stats['hotels']}")
-        
-        if most_valuable_prop:
-            owner_name = most_valuable_prop.owner.name if most_valuable_prop.owner else "None"
-            print(f"\n{self.colors['info']}Most Valuable Property: {self.colors['property']}{most_valuable_prop.name} (Owned by: {self.colors['player']}{owner_name})")
-            print(f"{self.colors['info']}Current Rent: {self.colors['rent']}${highest_rent}")
-        
-        # Most developed color group
-        if color_development:
-            most_dev_color = max(color_development.items(), 
-                                key=lambda x: x[1]["houses"] + x[1]["hotels"]*5)
-            print(f"\n{self.colors['info']}Most Developed Color Group: {self.colors['property']}{most_dev_color[0].value}")
-            print(f"{self.colors['info']}Development: {self.colors['success']}{most_dev_color[1]['houses']} houses, {most_dev_color[1]['hotels']} hotels")
-        
-        # Monopoly statistics
-        print(f"\n{self.colors['title']}MONOPOLY STATISTICS:")
-        monopolies = {}
-        for player in active_players:
-            player_monopolies = []
-            for color in set(p.color for p in player.properties if p.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]):
-                owned_props = [p for p in player.properties if p.color == color]
-                total_in_color = sum(1 for p in self.board.spaces if isinstance(p, Property) and p.color == color)
-                if len(owned_props) == total_in_color:
-                    player_monopolies.append(color.value)
-            
-            if player_monopolies:
-                monopolies[player.name] = player_monopolies
-        
-        if monopolies:
-            for player_name, colors in monopolies.items():
-                print(f"{self.colors['player']}{player_name} has monopoly on: {self.colors['property']}{', '.join(colors)}")
-        else:
-            print(f"{self.colors['info']}No player has a monopoly on any color group.")
-        
-        # Special category ownership
-        print(f"\n{self.colors['title']}SPECIAL CATEGORY OWNERSHIP:")
-        for category in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-            for player in active_players:
-                count = sum(1 for p in player.properties if p.color == category)
-                if count > 0:
-                    print(f"{self.colors['player']}{player.name} owns {self.colors['success']}{count} {self.colors['property']}{category.value}s")
-        
-        # Money distribution
-        if active_players:
-            print(f"\n{self.colors['title']}MONEY DISTRIBUTION:")
-            total_money = sum(p.money for p in self.players)
-            for player in self.players:
-                status = f"{self.colors['success']}Active" if not player.bankrupt else f"{self.colors['error']}Bankrupt"
-                percentage = (player.money / total_money * 100) if total_money > 0 else 0
-                print(f"{self.colors['player']}{player.name}: {self.colors['money']}${player.money} ({percentage:.1f}% of total) - {status}")
-        input(f"{self.colors['prompt']}Press Enter to continue...{self.colors['reset']}")
 
 
 # Run the game

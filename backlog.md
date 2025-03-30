@@ -49,3 +49,31 @@
  - ~~do not display everything when the bot plays~~
 
 
+
+ """
+    Evaluate the model on the given data loader.
+    
+    Args:
+        model (torch.nn.Module): The model to evaluate.
+        data_loader (torch.utils.data.DataLoader): The data loader for evaluation.
+        device (torch.device): The device to perform evaluation on.
+        
+    Returns:
+        float: The average loss over the dataset.
+    """
+    model.eval()
+    total_loss = 0.0
+    criterion = torch.nn.CrossEntropyLoss()
+    
+    with torch.no_grad():
+        for batch in data_loader:
+            inputs, labels = batch
+            inputs, labels = inputs.to(device), labels.to(device)
+            
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            
+            total_loss += loss.item()
+    
+    average_loss = total_loss / len(data_loader)
+    return average_loss
