@@ -6,8 +6,48 @@ from colorama import init, Fore, Back, Style
 from game_models import Property, PropertyColor, PropertyStatus
 from board import Board
 from player import Player
-from statistics import display_statistics
+from stats import display_statistics
 
+global bots_parameters
+bots_parameters = [
+        {
+            "risk_tolerance": 1.0,
+            "property_focus": 1.0,
+            "development_focus": 1.0,
+            "cash_reserve_preference": 1.0,
+            "trade_willingness": 1.0,
+            "monopoly_focus": 1.0,
+            "railroad_utility_interest": 1.0
+        },
+        {
+            "risk_tolerance": 1.0,
+            "property_focus": 1.0,
+            "development_focus": 1.0,
+            "cash_reserve_preference": 0.5,
+            "trade_willingness": 0.7,
+            "monopoly_focus": 1.0,
+            "railroad_utility_interest": 0
+        },
+        { 
+            "risk_tolerance": 0,
+            "property_focus": 0,
+            "development_focus": 0,
+            "cash_reserve_preference": 0,
+            "trade_willingness": 1,
+            "monopoly_focus": 0,
+            "railroad_utility_interest": 0
+        },
+        {
+            "risk_tolerance": 0.2,
+            "property_focus": 0.5,
+            "development_focus": 0.7,
+            "cash_reserve_preference": 0.7,
+            "trade_willingness": 0.5,
+            "monopoly_focus": 1,
+            "railroad_utility_interest": 0.3
+        }
+        
+    ]
 class MonopolyGame:
     def __init__(self):
         #clear screan
@@ -43,7 +83,7 @@ class MonopolyGame:
             
             # Get bot count with default value handling
             bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
-            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip())
+            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip()) 
             bot_count = int(bot_count_input) if bot_count_input else 2
             if neural_bot_count < 0:
                 neural_bot_count = 0
@@ -57,7 +97,7 @@ class MonopolyGame:
             MonopolyGame()
         
         self.board = Board()
-        self.players = self.create_players(player_count, bot_count, neural_bot_count)
+        self.players = self.create_players(player_count, bot_count, 0)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
@@ -85,12 +125,12 @@ class MonopolyGame:
             players.append(Player(name, token))
         for i in range(bot_count):
             name = f"Bot {i + 1}"
-            token = "🤖"
             if i < neural_bot_count:
                 token = "🧠"
                 player = Player(name, token, is_bot=True, game=self, bot_type='neural')
             else:
-                player = Player(name, token, is_bot=True, game=self)
+                token = "🤖"
+                player = Player(name, token, is_bot=True, game=self, bot_type='default', bot_parameters=bots_parameters[i])
             players.append(player)
             print(f"{self.colors['bot']}Added AI player: {name} {token}")
             

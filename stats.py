@@ -60,7 +60,7 @@ def display_statistics(game):
             print(f"{game.colors['error']}{player.name} is bankrupt.")
             
     if input(f"{game.colors['prompt']}Display extended statistics? (y/n): {game.colors['reset']}").lower() == 'y':
-        display_extended_statistics()
+        display_extended_statistics(game)
             
 def display_extended_statistics(game):
     """Display more comprehensive game statistics."""
@@ -201,7 +201,7 @@ def display_extended_statistics(game):
             print(f"{game.colors['player']}{player.name}: {game.colors['money']}${player.money} ({percentage:.1f}% of total) - {status}")
     
     # game evaluation
-    
+    game_evaluation(game)
     
     input(f"{game.colors['prompt']}Press Enter to continue...{game.colors['reset']}")
 
@@ -288,9 +288,29 @@ def game_evaluation(game):
         
         # Store for normalization
         player_evaluations[player]['raw_probability'] = win_probability
+        
+        # Calculate bankruptcy risk factors
+        bankruptcy_risk = 0
+        # Low cash is a major risk factor
+        if eval_data['cash_ratio'] < 0.2:
+            bankruptcy_risk += (0.2 - eval_data['cash_ratio']) * 5
+        # Few properties means fewer options to mortgage
+        if len(player.properties) < 3:
+            bankruptcy_risk += (3 - len(player.properties)) * 0.1
+        # Already mortgaged properties indicate financial trouble
+        mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
+        if mortgaged_count > 0:
+            bankruptcy_risk += mortgaged_count * 0.15
+        # Lower net worth relative to others increases bankruptcy risk
+        if net_worth_factor < 0.25:  # Below 25% of average
+            bankruptcy_risk += (0.25 - net_worth_factor) * 2
+            
+        # Store bankruptcy risk
+        player_evaluations[player]['bankruptcy_risk'] = min(bankruptcy_risk, 1.0)  # Cap at 100%
     
     # Normalize probabilities to sum to 100%
     total_raw_prob = sum(data['raw_probability'] for data in player_evaluations.values())
+    total_bankruptcy_risk = sum(data['bankruptcy_risk'] for data in player_evaluations.values())
     
     if total_raw_prob > 0:
         for player, data in player_evaluations.items():
@@ -299,6 +319,14 @@ def game_evaluation(game):
         # Equal probability if calculation resulted in 0
         for player, data in player_evaluations.items():
             data['win_probability'] = 100 / len(player_evaluations)
+    
+    # Normalize bankruptcy risk
+    if total_bankruptcy_risk > 0:
+        for player, data in player_evaluations.items():
+            data['bankruptcy_probability'] = (data['bankruptcy_risk'] / total_bankruptcy_risk) * 100
+    else:
+        for player, data in player_evaluations.items():
+            data['bankruptcy_probability'] = 100 / len(player_evaluations)
     
     # Display results sorted by win probability
     sorted_players = sorted(player_evaluations.items(), key=lambda x: x[1]['win_probability'], reverse=True)
@@ -316,6 +344,11 @@ def game_evaluation(game):
         print(f"   Net Worth: {game.colors['money']}${data['net_worth']:.0f} " + 
               f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
         
+        # Display bankruptcy probability
+        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
+                          game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+        print(f"   Bankruptcy Risk: {bankruptcy_color}{data['bankruptcy_probability']:.1f}%")
+        
         # Show key factors
         factors = []
         if data['monopoly_count'] > 0:
@@ -330,5 +363,21 @@ def game_evaluation(game):
         if factors:
             print(f"   Key factors: {game.colors['info']}{', '.join(factors)}")
         print()
+    
+    # Display players sorted by bankruptcy risk
+    print(f"\n{game.colors['title']}=== BANKRUPTCY RISK ANALYSIS ===\n")
+    bankruptcy_sorted = sorted(player_evaluations.items(), key=lambda x: x[1]['bankruptcy_probability'], reverse=True)
+    
+    print(f"{game.colors['info']}Players most likely to go bankrupt next:")
+    for i, (player, data) in enumerate(bankruptcy_sorted[:3]):  # Show top 3 at risk
+        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
+                          game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+        print(f"{i+1}. {game.colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
+        print(f"   Cash: {game.colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
+        
+        # Additional risk factors
+        mortgaged = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
+        if mortgaged > 0:
+            print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
     
     input(f"{game.colors['prompt']}Press Enter to continue...{game.colors['reset']}")
