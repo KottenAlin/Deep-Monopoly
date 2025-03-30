@@ -1,6 +1,6 @@
 import random
 import os
-import numpy as np
+#import numpy as np
 import matplotlib.pyplot as plt
 
 # methods for the game
@@ -67,28 +67,34 @@ bots_parameters = [
     ]
 
 class MonopolyGame:
-    def __init__(self, bot_count=2, bots_parameters=[]):
+    def __init__(self, bot_count=None, bots_parameters=[]):
         
-        self.botcount = bot_count
+    
+        
+        if not bot_count:
+            bot_count = int(input("Enter number of bots (0-8): "))
+            neural_bot_count = int(input("how many should be neural bots? (0-8): "))
         
         if bot_count < 2:
             print("Not enough players to start the game.")
             self.game_over = True
         
         self.board = Board()
-        self.players = self.create_bots(bot_count, bots_parameters)
+        self.players = self.create_bots(bot_count, neural_bot_count, bots_parameters)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
     
-    def create_bots(self, bot_count, bots_parameters=[]):
-        tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
+    def create_bots(self, bot_count, neural_bot_count , bots_parameters=[]):
         players = []
 
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
-            player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i])
+            if i < neural_bot_count:
+                player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i], bot_type='neural')
+            else:
+                player = Player(name, token, is_bot=True, game=self, bot_parameters=bots_parameters[i])
             players.append(player)
             
         return players
@@ -546,7 +552,6 @@ def main():
     # Global variable to track game statistics
     global game_stats
     
-    bot_count = int(input("Enter number of bots (0-8): "))
 
     for i in range(bot_count):
         game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot

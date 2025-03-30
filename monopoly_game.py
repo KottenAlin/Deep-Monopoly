@@ -42,7 +42,10 @@ class MonopolyGame:
             
             # Get bot count with default value handling
             bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
+            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip())
             bot_count = int(bot_count_input) if bot_count_input else 2
+            if neural_bot_count < 0:
+                neural_bot_count = 0
         except ValueError:
             time.sleep(2)
             MonopolyGame()
@@ -53,12 +56,26 @@ class MonopolyGame:
             MonopolyGame()
         
         self.board = Board()
-        self.players = self.create_players(player_count, bot_count)
+        self.players = self.create_players(player_count, bot_count, neural_bot_count)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
         
-    def create_players(self, player_count, bot_count):
+        # Initialize neural bots if there are any
+        self.turn_count = 0
+        if neural_bot_count > 0:
+            print(f"{self.colors['title']}Initializing neural network models for bots...")
+            for player in self.players:
+                if player.is_bot and player.bot.__class__.__name__ == "NeuralBot":
+                    try:
+                        print(f"{self.colors['bot']}Initializing model for {player.name}")
+                        player.bot.game = self  # Ensure the bot has a reference to the game
+                        player.bot.initialise_model()  # Initialize the neural network model
+                    except Exception as e:
+                        print(f"{self.colors['error']}Error initializing model: {e}")
+            print(f"{self.colors['success']}All neural bot models initialized successfully!")
+        
+    def create_players(self, player_count, bot_count, neural_bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []
         for i in range(player_count):
@@ -68,7 +85,11 @@ class MonopolyGame:
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             token = "🤖"
-            player = Player(name, token, is_bot=True, game=self)
+            if i < neural_bot_count:
+                token = "🧠"
+                player = Player(name, token, is_bot=True, game=self, bot_type='neural')
+            else:
+                player = Player(name, token, is_bot=True, game=self)
             players.append(player)
             print(f"{self.colors['bot']}Added AI player: {name} {token}")
             

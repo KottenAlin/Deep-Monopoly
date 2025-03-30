@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from enum import Enum
 import torch
+import matplotlib.pyplot as plt
 
 
 global parameters
@@ -307,7 +308,6 @@ class Bot:
         
             return False  # No trades were accepted
 
-        
     def decide_jail_strategy(self):
         """Decide how to handle being in jail."""
         # Use get out of jail card if available
@@ -558,30 +558,43 @@ class Bot:
             
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
-        super(NeuralNetwork, self).__init__()
+        super(NeuralNetwork, self).__init__() # Initialize the neural network 
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, output_dim)
-        )
+            
+        ) # Define the layers of the neural network
         
     def forward(self, x):
         return self.model(x)
 
 class NeuralBot(Bot):
-    def __init__(self, player):
-        super().__init__(player)
-        self.model = NeuralNetwork()
+    def __init__(self, player, game, parameters=parameters, display=True, property=None):
+        super().__init__(player, game, parameters, display, property)
+        self.player = player
+        self.game = game
+        self.display = display
+        
+    def initialise_model(self):
+        self.input_dim = len(self._get_state(self.game.board, self.game.players))  # Input dimension for the neural network
+        self.hidden_dim = 64  # Hidden layer size
+        self.output_dim = 10
+        self.batch_size = 32  # Batch size for training
+        
+        self.model = NeuralNetwork( input_dim=self.input_dim) # The neural network model
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.criterion = nn.MSELoss()
         self.memory = []  # For experience replay
+        self.losses = []  # For tracking losses
         self.epsilon = 0.3  # For exploration vs exploitation
         
     def _get_state(self, board, players):
         """Create a state representation for the neural network"""
         state = []
+        
         
         # Player information
         state.append(self.player.money / 2000.0)  # Normalized money
@@ -624,27 +637,176 @@ class NeuralBot(Bot):
             return super().decide_buy_property(property)
         
         # Get state and predict
-        state = self._get_state(None, [])  # Need to implement proper state capture
-        prediction = self.model(state)
-        buy_score = prediction[0].item()  # First output neuron for buying property
+        buy_score = self.get_state_and_precict(0)  # Get state and predict
         
-        return buy_score > 0.5
+        return buy_score > 0.5 #
     
     def decide_auction_bid(self, property, current_bid):
         """Use neural network to decide auction bid"""
         if random.random() < self.epsilon:  # Exploration
             return super().decide_auction_bid(property, current_bid)
         
-        # Get state and predict
-        state = self._get_state(None, [])
-        prediction = self.model(state)
-        bid_percentage = prediction[1].item()  # Second output for bid percentage
+        bid_percentage = self.get_state_and_precict(1)  # Get state and predict
+        # Bid percentage is between 0 and 1, so scale it to a reasonable range
         
         # Bid between current_bid and property.price * bid_percentage
         max_bid = min(self.player.money * 0.8, property.price * 1.5)
         new_bid = current_bid + int((max_bid - current_bid) * bid_percentage)
         
         return max(current_bid + 1, new_bid) if new_bid > current_bid else 0
+    
+    def decide_house_purchases(self):
+        if random.random() < self.epsilon:
+            return super().decide_house_purchases()
+        
+        # Get state and predict
+        state = self._get_state(self.game.board, self.game.players)
+        prediction = self.model.forward(state.unsqueeze(0))  # Add batch dimension
+        house_score = prediction[0][2].item()  # Third output for house purchase score
+
+        return house_score > 0.5
+        
+    def decide_jail_strategy(self):
+        if random.random() < self.epsilon:
+            return super().decide_jail_strategy()
+        
+        # Get state and predict
+        state = self._get_state(self.game.board, self.game.players)
+        prediction = self.model.forward(state.unsqueeze(0))
+        jail_strategy = prediction[0][3].item()
+        
+        if jail_strategy < 0.33:
+            return "1"
+        elif jail_strategy < 0.66:
+            return "2"
+        else:
+            return "3"
+    
+    def decide_trade(self, my_property, their_property, cash_amount):
+        if random.random() < self.epsilon:
+            return super().decide_trade(my_property, their_property, cash_amount)
+
+        trade_score = self.get_state_and_precict(4)
+        return trade_score > 0.5
+
+    def initiate_trade(self):
+        if random.random() < self.epsilon:
+            return super().initiate_trade()
+        
+        # Get state and predict
+        trade_initiation_score = self.get_state_and_precict(5)  # Get state and predict
+        
+        return trade_initiation_score > 0.5
+    
+    def decide_mortgage_property(self, amount_needed):
+        if random.random() < self.epsilon:
+            return super().decide_mortgage_property(amount_needed)
+        
+        # Get state and predict
+        mortgage_score = self.get_state_and_precict(6)  # Get state and predict
+        
+        return mortgage_score > 0.5
+    
+    def decide_unmortgage_property(self):
+        if random.random() < self.epsilon:
+            return super().decide_unmortgage_property()
+
+        unmortgage_score = self.get_state_and_precict(7)  # Get state and predict
+        
+        return unmortgage_score > 0.5
+    
+    def get_state_and_precict(self, output_column):
+        """Get the current state and make a prediction"""
+        state = self._get_state(self.game.board, self.game.players)
+        prediction = self.model.forward(state.unsqueeze(0))  # Add batch dimension
+        
+        return prediction[0][output_column].item()  # Return the state and the prediction for the specified output column
+        
+    def make_move(self):
+        """Make all decisions for a turn."""
+        # If in jail, decide strategy
+        old_state = self._get_state(self.game.board, self.game.players)
+        
+        if self.player.jail_turns > 0:
+            return self.decide_jail_strategy()
+        
+        # Development is prioritized based on development focus
+        if random.random() < self.development_focus:
+            property = self.decide_house_purchases()
+            if property:
+                self.game.build_house_bot(self.player)
+        
+        # Trading frequency based on trade willingness
+        if random.random() < self.trade_willingness:
+            self.initiate_trade()
+        
+        # Unmortgage based on cash reserves and property focus
+        if random.random() < self.property_focus:
+            self.decide_unmortgage_property()
+        
+        # If low on money, consider mortgaging properties based on cash reserve preference
+        min_cash = 50 + (self.cash_reserve_preference * 200)
+        if self.player.money < min_cash:
+            self.decide_mortgage_property(min_cash - self.player.money)
+
+        # Get new state after actions
+        new_state = self._get_state(self.game.board, self.game.players)
+        action = 0 #self.decide_action()
+        reward = self.calculate__reward(old_state, new_state)
+        
+        self.learn_from_experience(old_state, action, reward, new_state)
+        
+    def calculate__reward(self, old_state, new_state):
+        """Calculate the reward based on the action taken"""
+        reward = 0
+        
+        # Get player state before and after
+        old_money = old_state[0] * 2000  # Denormalize
+        new_money = new_state[0] * 2000  # Denormalize
+        
+        # Basic reward based on money change
+        money_change = new_money - old_money
+        reward += money_change / 50  # Scale down large money changes
+        
+        # Reward for acquiring properties (check property ownership bits)
+        property_count_before = sum(old_state[3:40:3])  # Count 1's in property ownership
+        property_count_after = sum(new_state[3:40:3])
+        if property_count_after > property_count_before:
+            reward += 10  # Significant reward for acquiring new properties
+        
+        # Penalty for mortgaging properties
+        mortgage_count_before = sum(old_state[4:40:3])
+        mortgage_count_after = sum(new_state[4:40:3])
+        if mortgage_count_after > mortgage_count_before:
+            reward -= 5  # Penalty for having to mortgage
+        
+        # Reward for unmortgaging
+        if mortgage_count_after < mortgage_count_before:
+            reward += 3  # Smaller reward for unmortgaging
+        
+        # Reward for building houses
+        houses_before = sum(old_state[5:40:3])
+        houses_after = sum(new_state[5:40:3])
+        if houses_after > houses_before:
+            reward += 5 * (houses_after - houses_before)  # Reward per house built
+        
+        # Penalty for landing in jail
+        was_in_jail = old_state[2] > 0
+        is_in_jail = new_state[2] > 0
+        if not was_in_jail and is_in_jail:
+            reward -= 10  # Penalty for newly landing in jail
+        
+        # Reward for getting out of jail
+        if was_in_jail and not is_in_jail:
+            reward += 5  # Reward for escaping jail
+        
+        # Long-term strategy rewards
+        # Completing monopolies (requires game state which we don't have here)
+        # This would need to be handled elsewhere or with additional state info
+        
+        # Scale final reward
+        return reward
+
     
     def learn_from_experience(self, old_state, action, reward, new_state):
         """Store experience and learn from it"""
@@ -659,18 +821,27 @@ class NeuralBot(Bot):
                 # Simple Q-learning update
                 target = rew
                 if new_s is not None:  # Not a terminal state
-                    target += 0.95 * torch.max(self.model(new_s)).item()
+                    target += 0.95 * torch.max(self.model(new_s)).item() # Get max Q-value for new state
                 
                 # Get current prediction and update the action's value
                 current = self.model(old_s)
                 target_f = current.clone()
-                target_f[0, act] = target
+                target_f[0, act] = target # Update the Q-value for the action taken
                 
                 # Train the model
                 self.optimizer.zero_grad()
                 loss = self.criterion(current, target_f)
+                self.losses.append(loss.item())  # Track loss for display
                 loss.backward()
                 self.optimizer.step()
+    
+    def display_loss(self):
+        """Display the training loss"""
+        plt.plot(self.losses)
+        plt.title("Training Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.show()
     
     def save_model(self, path="neural_bot_model.pth"):
         """Save the neural network model"""
