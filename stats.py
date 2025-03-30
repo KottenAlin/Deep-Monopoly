@@ -61,7 +61,7 @@ def display_statistics(game):
             
     if input(f"{game.colors['prompt']}Display extended statistics? (y/n): {game.colors['reset']}").lower() == 'y':
         display_extended_statistics(game)
-            
+        
 def display_extended_statistics(game):
     """Display more comprehensive game statistics."""
     active_players = [p for p in game.players if not p.bankrupt]
@@ -75,13 +75,16 @@ def display_extended_statistics(game):
     for p in game.players:
         total_value = p.money
         for prop in p.properties:
-            total_value += prop.price
-            if hasattr(prop, 'houses') and prop.houses > 0:
-                total_value += prop.house_price * prop.houses
-            if hasattr(prop, 'hotel') and prop.hotel:
-                total_value += prop.house_price * 5
-            if prop.status == PropertyStatus.MORTGAGED:
-                total_value -= prop.mortgage_value * 0.1  # Unmortgaging cost
+            # Don't add mortgaged properties to net worth
+            if prop.status != PropertyStatus.MORTGAGED:
+                total_value += prop.price
+                if hasattr(prop, 'houses') and prop.houses > 0:
+                    total_value += prop.house_price * prop.houses
+                if hasattr(prop, 'hotel') and prop.hotel:
+                    total_value += prop.house_price * 5
+            else:
+                # For mortgaged properties, add the mortgage value they could recover
+                total_value += 0 #prop.price / 2  # Mortgage value is typically half of property price
         player_values[p.name] = total_value
     
     # Sort players by net worth and display ranking
@@ -217,20 +220,28 @@ def game_evaluation(game):
             print(f"{game.colors['error']}No active players left in the game.")
         return
     
+    # Calculate win probabilities
+    player_evaluations, game_progress, game_phase = calculate_win_probabilities(game)
+    
+    # Display results
+    display_win_probabilities(game, player_evaluations, game_progress, game_phase)
+
+def calculate_win_probabilities(game):
+    """Calculate win and bankruptcy probabilities for all active players."""
+    player_evaluations = {}
+    active_players = [p for p in game.players if not p.bankrupt]
+    
     # Calculate game progress based on total properties owned and developed
     total_properties = sum(1 for space in game.board.spaces if isinstance(space, Property))
     owned_properties = sum(1 for space in game.board.spaces 
-                         if isinstance(space, Property) and space.owner is not None)
+                            if isinstance(space, Property) and space.owner is not None)
     developed_properties = sum(1 for space in game.board.spaces
-                             if isinstance(space, Property) and hasattr(space, 'houses') 
-                             and (space.houses > 0 or (hasattr(space, 'hotel') and space.hotel)))
+                                if isinstance(space, Property) and hasattr(space, 'houses') 
+                                and (space.houses > 0 or (hasattr(space, 'hotel') and space.hotel)))
     
     game_progress = (owned_properties / total_properties) * 0.6 + (developed_properties / total_properties) * 0.4
     game_phase = "Early" if game_progress < 0.3 else "Mid" if game_progress < 0.7 else "Late"
-    print(f"{game.colors['info']}Game Progress: {game.colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
     
-    # Calculate each player's net worth
-    player_evaluations = {}
     total_net_worth = 0
     
     for player in active_players:
@@ -244,18 +255,21 @@ def game_evaluation(game):
                 color_counts[prop.color] = 0
             color_counts[prop.color] += 1
             
-            # Add property value
-            net_worth += prop.price
+            # Add property value only if not mortgaged
             if prop.status != PropertyStatus.MORTGAGED:
+                net_worth += prop.price
                 if hasattr(prop, 'houses') and prop.houses > 0:
                     net_worth += prop.houses * prop.house_price
                 if hasattr(prop, 'hotel') and prop.hotel:
                     net_worth += 5 * prop.house_price
+            else:
+                # For mortgaged properties, add the mortgage value
+                net_worth += prop.price / 2
         
         # Check for monopolies
         for color, count in color_counts.items():
             total_in_color = sum(1 for p in game.board.spaces 
-                              if isinstance(p, Property) and p.color == color)
+                                if isinstance(p, Property) and p.color == color)
             if count == total_in_color and color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
                 monopoly_count += 1
         
@@ -275,7 +289,7 @@ def game_evaluation(game):
         net_worth_factor = eval_data['net_worth'] / total_net_worth if total_net_worth > 0 else 1/len(active_players)
         
         # Adjust for monopolies - more important in mid to late game
-        monopoly_factor = 1 + (eval_data['monopoly_count'] * 0.15 * min(game_progress * 2, 1))
+        monopoly_factor = 1 + (eval_data['monopoly_count'] * 0.25 * min(game_progress * 2, 1))
         
         # Cash ratio - important in early game, less so later
         cash_factor = 1 + (eval_data['cash_ratio'] * 0.1 * (1 - game_progress))
@@ -284,7 +298,7 @@ def game_evaluation(game):
         special_factor = 1 + (eval_data['railroad_count'] * 0.05 + eval_data['utility_count'] * 0.03) * (1 - game_progress)
         
         # Calculate final win probability
-        win_probability = net_worth_factor * monopoly_factor * cash_factor * special_factor
+        win_probability = (net_worth_factor * monopoly_factor * cash_factor * special_factor)**2
         
         # Store for normalization
         player_evaluations[player]['raw_probability'] = win_probability
@@ -327,6 +341,83 @@ def game_evaluation(game):
     else:
         for player, data in player_evaluations.items():
             data['bankruptcy_probability'] = 100 / len(player_evaluations)
+            
+    # Add total net worth to evaluations dictionary for later use
+    player_evaluations['total_net_worth'] = total_net_worth
+    
+    return player_evaluations, game_progress, game_phase
+
+def update_game_probabilities_with_winner(game, winner):
+    """Update win probabilities after the game has ended with a known winner."""
+    print(f"\n{game.colors['title']}=== FINAL GAME ANALYSIS ===\n")
+    
+    # Get the regular probability calculation
+    player_evaluations, game_progress, game_phase = calculate_win_probabilities(game)
+    
+    # Store the original probabilities for comparison
+    for player in player_evaluations:
+        if player != 'total_net_worth':  # Skip the non-player entry
+            player_evaluations[player]['original_win_probability'] = player_evaluations[player]['win_probability']
+    
+    # Set actual probabilities (100% for winner, 0% for others)
+    for player in player_evaluations:
+        if player != 'total_net_worth':  # Skip the non-player entry
+            if player == winner:
+                player_evaluations[player]['win_probability'] = 100.0
+            else:
+                player_evaluations[player]['win_probability'] = 0.0
+    
+    # Display results
+    print(f"{game.colors['success']}The winner is: {game.colors['player']}{winner.name}!")
+    print(f"\n{game.colors['title']}Comparing Predictions vs. Reality:\n")
+    
+    # Display players sorted by original probability
+    sorted_players = sorted(
+        [(p, data) for p, data in player_evaluations.items() if p != 'total_net_worth'],
+        key=lambda x: x[1]['original_win_probability'], 
+        reverse=True
+    )
+    
+    for i, (player, data) in enumerate(sorted_players):
+        actual = "Winner" if player == winner else "Lost"
+        accuracy = "Correct" if (player == winner and data['original_win_probability'] > 50) or \
+                              (player != winner and data['original_win_probability'] < 50) else "Incorrect"
+        
+        accuracy_color = game.colors['success'] if accuracy == "Correct" else game.colors['error']
+        actual_color = game.colors['success'] if actual == "Winner" else game.colors['warning']
+        
+        print(f"{i+1}. {game.colors['player']}{player.name}:")
+        print(f"   Predicted: {game.colors['info']}{data['original_win_probability']:.1f}% chance to win")
+        print(f"   Actual: {actual_color}{actual}")
+        print(f"   Prediction was: {accuracy_color}{accuracy}\n")
+    
+    # Calculate overall prediction accuracy
+    correct_predictions = sum(1 for p, data in sorted_players if 
+                            (p == winner and data['original_win_probability'] > 50) or 
+                            (p != winner and data['original_win_probability'] < 50))
+    
+    accuracy_percentage = (correct_predictions / len(sorted_players)) * 100 if sorted_players else 0
+    
+    print(f"{game.colors['title']}Overall Prediction Accuracy: {game.colors['info']}{accuracy_percentage:.1f}%")
+    
+    # If winner was not the highest probability player, explain why
+    if sorted_players and sorted_players[0][0] != winner:
+        print(f"\n{game.colors['warning']}The model predicted {sorted_players[0][0].name} " + 
+              f"to win with {sorted_players[0][1]['original_win_probability']:.1f}% probability.")
+        print(f"{game.colors['info']}Possible factors for the unexpected outcome:")
+        print(f" - Luck in dice rolls or card draws")
+        print(f" - Strategic decisions not captured by the model")
+        print(f" - Late-game property or cash exchanges")
+    
+    return player_evaluations
+
+
+
+def display_win_probabilities(game, player_evaluations, game_progress, game_phase):
+    """Display the calculated win and bankruptcy probabilities."""
+    total_net_worth = player_evaluations.pop('total_net_worth', 0)
+    
+    print(f"{game.colors['info']}Game Progress: {game.colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
     
     # Display results sorted by win probability
     sorted_players = sorted(player_evaluations.items(), key=lambda x: x[1]['win_probability'], reverse=True)
@@ -342,11 +433,11 @@ def game_evaluation(game):
             
         print(f"{i+1}. {game.colors['player']}{player.name}: {prob_color}{data['win_probability']:.1f}% chance to win")
         print(f"   Net Worth: {game.colors['money']}${data['net_worth']:.0f} " + 
-              f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
+                f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
         
         # Display bankruptcy probability
         bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                          game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
         print(f"   Bankruptcy Risk: {bankruptcy_color}{data['bankruptcy_probability']:.1f}%")
         
         # Show key factors
@@ -371,7 +462,7 @@ def game_evaluation(game):
     print(f"{game.colors['info']}Players most likely to go bankrupt next:")
     for i, (player, data) in enumerate(bankruptcy_sorted[:3]):  # Show top 3 at risk
         bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                          game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
         print(f"{i+1}. {game.colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
         print(f"   Cash: {game.colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
         
@@ -379,5 +470,3 @@ def game_evaluation(game):
         mortgaged = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
         if mortgaged > 0:
             print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
-    
-    input(f"{game.colors['prompt']}Press Enter to continue...{game.colors['reset']}")
