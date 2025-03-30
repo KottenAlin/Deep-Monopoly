@@ -4,7 +4,10 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
+import pickle
+import json
 
+game_history = [[]]
 
 def display_statistics(game):
     # Display a comprehensive property and building report
@@ -213,6 +216,80 @@ def display_extended_statistics(game):
     
     input(f"{game.colors['prompt']}Press Enter to continue...{game.colors['reset']}")
 
+def record_game_history(game, game_count=0):
+    """Record game history for future analysis."""
+    if game_count >= len(game_history):
+        game_history.append([])
+    game_history[game_count].append(game)
+
+def save_game_history(filename="game_history.pkl"):
+    """Save game history to a file using pickle."""
+
+    with open(filename, 'wb') as f:
+        pickle.dump(game_history, f)
+        
+
+def save_game_to_json(filename="game_history.json"):
+    """Save game history to a JSON file for better interoperability."""
+    try:
+        # We need to convert game objects to serializable format
+        serializable_history = []
+        
+        for game_list in game_history:
+            serialized_games = []
+            for game in game_list:
+                # Create a basic representation of the game
+                game_data = {
+                    "players": [
+                        {
+                            "name": player.name,
+                            "money": player.money,
+                            "position": player.position,
+                            "bankrupt": player.bankrupt,
+                            "properties": [prop.name for prop in player.properties]
+                        }
+                        for player in game.players
+                    ],
+                    "properties": [
+                        {
+                            "name": space.name,
+                            "position": space.position,
+                            "price": space.price,
+                            "owner": space.owner.name if hasattr(space, 'owner') and space.owner else None,
+                            "houses": space.houses if hasattr(space, 'houses') else 0,
+                            "hotel": space.hotel if hasattr(space, 'hotel') else False,
+                            "mortgaged": space.status == PropertyStatus.MORTGAGED if hasattr(space, 'status') else False,
+                            "color": space.color.value if hasattr(space, 'color') else None
+                        }
+                        for space in game.board.spaces if isinstance(space, Property)
+                    ]
+                }
+                serialized_games.append(game_data)
+            serializable_history.append(serialized_games)
+        
+        with open(filename, 'w') as f:
+            json.dump(serializable_history, f, indent=2)
+        print(f"Game history saved to {filename}")
+    except Exception as e:
+        print(f"Error saving game history to JSON: {e}")
+
+def load_game_history(filename="game_history.pkl"):
+    """Load game history from a file using pickle."""
+    global game_history
+    try:
+        with open(filename, 'rb') as f:
+            game_history = pickle.load(f)
+        print(f"Successfully loaded game history with {sum(len(games) for games in game_history)} total game states.")
+        return game_history
+    except FileNotFoundError:
+        print(f"File {filename} not found. Starting with empty game history.")
+        game_history = [[]]
+        return game_history
+    except Exception as e:
+        print(f"Error loading game history: {e}")
+        game_history = [[]]
+        return game_history
+
 def game_evaluation(game):
     """Evaluate each player's chances of winning based on game state."""
     print(f"\n{game.colors['title']}=== GAME WINNING PROBABILITY ANALYSIS ===\n")
@@ -323,7 +400,13 @@ def calculate_win_probabilities(game):
         # Lower net worth relative to others increases bankruptcy risk
         if net_worth_factor < 0.25:  # Below 25% of average
             bankruptcy_risk += (0.25 - net_worth_factor) * 2
-            
+        # Fewer monopolies increase bankruptcy risk
+        if eval_data['monopoly_count'] == 0:
+            bankruptcy_risk += 0.5  # No monopolies is a significant risk
+        else:
+            bankruptcy_risk += (1 / eval_data['monopoly_count']) * 0.2
+        # Higher win rate decreases bankruptcy risk
+        bankruptcy_risk -= eval_data['raw_probability'] * 0.1  # Reduce risk based on win probability
         # Store bankruptcy risk
         player_evaluations[player]['bankruptcy_risk'] = min(bankruptcy_risk, 1.0)  # Cap at 100%
     
@@ -351,6 +434,66 @@ def calculate_win_probabilities(game):
     player_evaluations['total_net_worth'] = total_net_worth
     
     return player_evaluations, game_progress, game_phase
+
+def display_win_probabilities(game, player_evaluations, game_progress, game_phase):
+    """Display the calculated win and bankruptcy probabilities."""
+    total_net_worth = player_evaluations.pop('total_net_worth', 0)
+    
+    print(f"{game.colors['info']}Game Progress: {game.colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
+    
+    # Display results sorted by win probability
+    sorted_players = sorted(player_evaluations.items(), key=lambda x: x[1]['win_probability'], reverse=True)
+    
+    for i, (player, data) in enumerate(sorted_players):
+        # Calculate color for probability
+        if data['win_probability'] > 50:
+            prob_color = game.colors['success']
+        elif data['win_probability'] > 25:
+            prob_color = game.colors['warning']
+        else:
+            prob_color = game.colors['error']
+            
+        print(f"{i+1}. {game.colors['player']}{player.name}: {prob_color}{data['win_probability']:.1f}% chance to win")
+        print(f"   Net Worth: {game.colors['money']}${data['net_worth']:.0f} " + 
+                f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
+        
+        # Display bankruptcy probability
+        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
+                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+        print(f"   Bankruptcy Risk: {bankruptcy_color}{data['bankruptcy_probability']:.1f}%")
+        
+        # Show key factors
+        factors = []
+        if data['monopoly_count'] > 0:
+            factors.append(f"{data['monopoly_count']} monopolies")
+        if data['railroad_count'] > 0:
+            factors.append(f"{data['railroad_count']} railroads")
+        if data['cash_ratio'] > 0.3:
+            factors.append(f"good cash reserves ({data['cash_ratio']*100:.0f}%)")
+        elif data['cash_ratio'] < 0.1:
+            factors.append(f"low cash ({data['cash_ratio']*100:.0f}%)")
+        
+        if factors:
+            print(f"   Key factors: {game.colors['info']}{', '.join(factors)}")
+        print()
+    
+    # Display players sorted by bankruptcy risk
+    print(f"\n{game.colors['title']}=== BANKRUPTCY RISK ANALYSIS ===\n")
+    bankruptcy_sorted = sorted(player_evaluations.items(), key=lambda x: x[1]['bankruptcy_probability'], reverse=True)
+    
+    print(f"{game.colors['info']}Players most likely to go bankrupt next:")
+    for i, (player, data) in enumerate(bankruptcy_sorted[:3]):  # Show top 3 at risk
+        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
+                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+        print(f"{i+1}. {game.colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
+        print(f"   Cash: {game.colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
+        
+        # Additional risk factors
+        mortgaged = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
+        if mortgaged > 0:
+            print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
+
+
 
 class WinPredictorNN(nn.Module):
     def __init__(self):
@@ -534,60 +677,4 @@ def train_win_predictor(game_history, epochs=1000):
     print("Model trained and saved as 'win_predictor_model.pt'")
 
 
-def display_win_probabilities(game, player_evaluations, game_progress, game_phase):
-    """Display the calculated win and bankruptcy probabilities."""
-    total_net_worth = player_evaluations.pop('total_net_worth', 0)
-    
-    print(f"{game.colors['info']}Game Progress: {game.colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
-    
-    # Display results sorted by win probability
-    sorted_players = sorted(player_evaluations.items(), key=lambda x: x[1]['win_probability'], reverse=True)
-    
-    for i, (player, data) in enumerate(sorted_players):
-        # Calculate color for probability
-        if data['win_probability'] > 50:
-            prob_color = game.colors['success']
-        elif data['win_probability'] > 25:
-            prob_color = game.colors['warning']
-        else:
-            prob_color = game.colors['error']
-            
-        print(f"{i+1}. {game.colors['player']}{player.name}: {prob_color}{data['win_probability']:.1f}% chance to win")
-        print(f"   Net Worth: {game.colors['money']}${data['net_worth']:.0f} " + 
-                f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
-        
-        # Display bankruptcy probability
-        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
-        print(f"   Bankruptcy Risk: {bankruptcy_color}{data['bankruptcy_probability']:.1f}%")
-        
-        # Show key factors
-        factors = []
-        if data['monopoly_count'] > 0:
-            factors.append(f"{data['monopoly_count']} monopolies")
-        if data['railroad_count'] > 0:
-            factors.append(f"{data['railroad_count']} railroads")
-        if data['cash_ratio'] > 0.3:
-            factors.append(f"good cash reserves ({data['cash_ratio']*100:.0f}%)")
-        elif data['cash_ratio'] < 0.1:
-            factors.append(f"low cash ({data['cash_ratio']*100:.0f}%)")
-        
-        if factors:
-            print(f"   Key factors: {game.colors['info']}{', '.join(factors)}")
-        print()
-    
-    # Display players sorted by bankruptcy risk
-    print(f"\n{game.colors['title']}=== BANKRUPTCY RISK ANALYSIS ===\n")
-    bankruptcy_sorted = sorted(player_evaluations.items(), key=lambda x: x[1]['bankruptcy_probability'], reverse=True)
-    
-    print(f"{game.colors['info']}Players most likely to go bankrupt next:")
-    for i, (player, data) in enumerate(bankruptcy_sorted[:3]):  # Show top 3 at risk
-        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
-        print(f"{i+1}. {game.colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
-        print(f"   Cash: {game.colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
-        
-        # Additional risk factors
-        mortgaged = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
-        if mortgaged > 0:
-            print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
+

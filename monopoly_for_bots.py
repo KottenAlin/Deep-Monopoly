@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from game_models import Property, PropertyStatus
 from board import Board
 from player import Player
-
+from stats import save_game_history, record_game_history, save_game_to_json
 
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
@@ -64,7 +64,7 @@ bots_parameters = [
     ]
 
 class MonopolyGame:
-    def __init__(self, bot_count=2, neural_bot_count=2, bots_parameters=[]):
+    def __init__(self, bot_count=2, neural_bot_count=2, bots_parameters=[], game_count=0):
         
         if bot_count < 2:
             print("Not enough players to start the game.")
@@ -74,6 +74,7 @@ class MonopolyGame:
         self.players = self.create_bots(bot_count, neural_bot_count, bots_parameters)
         self.current_player_idx = 0
         self.doubles_count = 0
+        self.game_count = game_count
         self.game_over = False
         
         # Initialize neural bots if there are any
@@ -380,6 +381,8 @@ class MonopolyGame:
         player = self.players[self.current_player_idx]
         #os.system('cls' if os.name == 'nt' else 'clear')
         
+        record_game_history(self, game_count=self.game_count) #save game state
+        
         if player.bankrupt:
             self.next_player()
             return
@@ -569,11 +572,12 @@ def main():
     
     for i in range(num_games):  # play 100 games
         print(f"Game {i+1} of 100")
-        game = MonopolyGame(bot_count=bot_count, neural_bot_count=neural_bot_count, bots_parameters=bots_parameters)
+        game = MonopolyGame(bot_count=bot_count, neural_bot_count=neural_bot_count, bots_parameters=bots_parameters, game_count = i)
         game.play_game()
         # Update statistics
         game_stats["games_played"] += 1
 
+    save_game_history()
     display_statistics()
     
 # Run the game

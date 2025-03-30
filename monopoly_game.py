@@ -116,6 +116,7 @@ class MonopolyGame:
                         print(f"{self.colors['error']}Error initializing model: {e}")
             print(f"{self.colors['success']}All neural bot models initialized successfully!")
         
+        
     def create_players(self, player_count, bot_count, neural_bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
         players = []

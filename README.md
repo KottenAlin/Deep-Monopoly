@@ -22,7 +22,7 @@ Deep-Monopoly is a project that applies deep reinforcement learning algorithms t
 ```
 python >= 3.8
 pytorch
-tets
+
 numpy
 matplotlib
 ```
