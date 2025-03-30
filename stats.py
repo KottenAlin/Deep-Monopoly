@@ -1,5 +1,10 @@
 from enum import Enum
 from game_models import Property, PropertyColor, PropertyStatus
+import torch
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim
+
 
 def display_statistics(game):
     # Display a comprehensive property and building report
@@ -347,70 +352,186 @@ def calculate_win_probabilities(game):
     
     return player_evaluations, game_progress, game_phase
 
-def update_game_probabilities_with_winner(game, winner):
-    """Update win probabilities after the game has ended with a known winner."""
-    print(f"\n{game.colors['title']}=== FINAL GAME ANALYSIS ===\n")
-    
-    # Get the regular probability calculation
-    player_evaluations, game_progress, game_phase = calculate_win_probabilities(game)
-    
-    # Store the original probabilities for comparison
-    for player in player_evaluations:
-        if player != 'total_net_worth':  # Skip the non-player entry
-            player_evaluations[player]['original_win_probability'] = player_evaluations[player]['win_probability']
-    
-    # Set actual probabilities (100% for winner, 0% for others)
-    for player in player_evaluations:
-        if player != 'total_net_worth':  # Skip the non-player entry
-            if player == winner:
-                player_evaluations[player]['win_probability'] = 100.0
-            else:
-                player_evaluations[player]['win_probability'] = 0.0
-    
-    # Display results
-    print(f"{game.colors['success']}The winner is: {game.colors['player']}{winner.name}!")
-    print(f"\n{game.colors['title']}Comparing Predictions vs. Reality:\n")
-    
-    # Display players sorted by original probability
-    sorted_players = sorted(
-        [(p, data) for p, data in player_evaluations.items() if p != 'total_net_worth'],
-        key=lambda x: x[1]['original_win_probability'], 
-        reverse=True
-    )
-    
-    for i, (player, data) in enumerate(sorted_players):
-        actual = "Winner" if player == winner else "Lost"
-        accuracy = "Correct" if (player == winner and data['original_win_probability'] > 50) or \
-                              (player != winner and data['original_win_probability'] < 50) else "Incorrect"
+class WinPredictorNN(nn.Module):
+    def __init__(self):
+        super(WinPredictorNN, self).__init__()
+        # Input features: net_worth, monopoly_count, railroad_count, utility_count, cash_ratio, game_progress
+        self.layer1 = nn.Linear(6, 12)
+        self.layer2 = nn.Linear(12, 8)
+        self.layer3 = nn.Linear(8, 2)  # Output: [win_probability, bankruptcy_probability]
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
         
-        accuracy_color = game.colors['success'] if accuracy == "Correct" else game.colors['error']
-        actual_color = game.colors['success'] if actual == "Winner" else game.colors['warning']
-        
-        print(f"{i+1}. {game.colors['player']}{player.name}:")
-        print(f"   Predicted: {game.colors['info']}{data['original_win_probability']:.1f}% chance to win")
-        print(f"   Actual: {actual_color}{actual}")
-        print(f"   Prediction was: {accuracy_color}{accuracy}\n")
-    
-    # Calculate overall prediction accuracy
-    correct_predictions = sum(1 for p, data in sorted_players if 
-                            (p == winner and data['original_win_probability'] > 50) or 
-                            (p != winner and data['original_win_probability'] < 50))
-    
-    accuracy_percentage = (correct_predictions / len(sorted_players)) * 100 if sorted_players else 0
-    
-    print(f"{game.colors['title']}Overall Prediction Accuracy: {game.colors['info']}{accuracy_percentage:.1f}%")
-    
-    # If winner was not the highest probability player, explain why
-    if sorted_players and sorted_players[0][0] != winner:
-        print(f"\n{game.colors['warning']}The model predicted {sorted_players[0][0].name} " + 
-              f"to win with {sorted_players[0][1]['original_win_probability']:.1f}% probability.")
-        print(f"{game.colors['info']}Possible factors for the unexpected outcome:")
-        print(f" - Luck in dice rolls or card draws")
-        print(f" - Strategic decisions not captured by the model")
-        print(f" - Late-game property or cash exchanges")
-    
-    return player_evaluations
+    def forward(self, x):
+        x = self.relu(self.layer1(x))
+        x = self.relu(self.layer2(x))
+        x = self.sigmoid(self.layer3(x))
+        return x
 
+def calculate_win_probabilities_nn(game):
+    """Calculate win and bankruptcy probabilities using a neural network."""
+    player_evaluations = {}
+    active_players = [p for p in game.players if not p.bankrupt]
+    
+    # Calculate game progress similar to the original function
+    total_properties = sum(1 for space in game.board.spaces if isinstance(space, Property))
+    owned_properties = sum(1 for space in game.board.spaces 
+                            if isinstance(space, Property) and space.owner is not None)
+    developed_properties = sum(1 for space in game.board.spaces
+                                if isinstance(space, Property) and hasattr(space, 'houses') 
+                                and (space.houses > 0 or (hasattr(space, 'hotel') and space.hotel)))
+    
+    game_progress = (owned_properties / total_properties) * 0.6 + (developed_properties / total_properties) * 0.4
+    game_phase = "Early" if game_progress < 0.3 else "Mid" if game_progress < 0.7 else "Late"
+    
+    total_net_worth = 0
+    
+    # Get player statistics for neural network input
+    for player in active_players:
+        net_worth = player.money
+        monopoly_count = 0
+        
+        # Count monopolies
+        color_counts = {}
+        for prop in player.properties:
+            if prop.color not in color_counts:
+                color_counts[prop.color] = 0
+            color_counts[prop.color] += 1
+            
+            # Add property value only if not mortgaged
+            if prop.status != PropertyStatus.MORTGAGED:
+                net_worth += prop.price
+                if hasattr(prop, 'houses') and prop.houses > 0:
+                    net_worth += prop.houses * prop.house_price
+                if hasattr(prop, 'hotel') and prop.hotel:
+                    net_worth += 5 * prop.house_price
+            else:
+                # For mortgaged properties, add the mortgage value
+                net_worth += prop.price / 2
+        
+        # Check for monopolies
+        for color, count in color_counts.items():
+            total_in_color = sum(1 for p in game.board.spaces 
+                                if isinstance(p, Property) and p.color == color)
+            if count == total_in_color and color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+                monopoly_count += 1
+                
+        # Store player evaluation data
+        player_evaluations[player] = {
+            'net_worth': net_worth,
+            'monopoly_count': monopoly_count,
+            'railroad_count': sum(1 for p in player.properties if p.color == PropertyColor.RAILROAD),
+            'utility_count': sum(1 for p in player.properties if p.color == PropertyColor.UTILITY),
+            'cash_ratio': player.money / net_worth if net_worth > 0 else 0
+        }
+        total_net_worth += net_worth
+    
+    # Normalize net worth for neural network input
+    for player, eval_data in player_evaluations.items():
+        eval_data['net_worth_ratio'] = eval_data['net_worth'] / total_net_worth if total_net_worth > 0 else 1/len(active_players)
+    
+    # Initialize or load the model
+    try:
+        model = torch.load('win_predictor_model.pt')
+    except:
+        model = WinPredictorNN()
+    
+    # Run predictions for each player
+    for player, data in player_evaluations.items():
+        # Create input tensor
+        features = [
+            data['net_worth_ratio'],
+            data['monopoly_count'] / 8,  # Normalize by max possible monopolies
+            data['railroad_count'] / 4,  # Normalize by max railroads
+            data['utility_count'] / 2,   # Normalize by max utilities
+            data['cash_ratio'],
+            game_progress
+        ]
+        input_tensor = torch.FloatTensor(features)
+        
+        # Get prediction
+        with torch.no_grad():
+            output = model(input_tensor)
+        
+        # Store predictions
+        data['win_probability'] = float(output[0]) * 100  # Convert to percentage
+        data['bankruptcy_probability'] = float(output[1]) * 100
+    
+    # Fall back to original algorithm if predictions don't make sense
+    # (e.g., all players have very low win probability)
+    if max(data['win_probability'] for data in player_evaluations.values()) < 10:
+        player_evaluations, game_progress, game_phase = calculate_win_probabilities(game)
+        return player_evaluations, game_progress, game_phase
+    
+    # Normalize probabilities to sum to 100%
+    total_win_prob = sum(data['win_probability'] for data in player_evaluations.values())
+    total_bankruptcy_prob = sum(data['bankruptcy_probability'] for data in player_evaluations.values())
+    
+    if total_win_prob > 0:
+        for player, data in player_evaluations.items():
+            data['win_probability'] = (data['win_probability'] / total_win_prob) * 100
+    
+    if total_bankruptcy_prob > 0:
+        for player, data in player_evaluations.items():
+            data['bankruptcy_probability'] = (data['bankruptcy_probability'] / total_bankruptcy_prob) * 100
+    
+    # Add total net worth to evaluations dictionary
+    player_evaluations['total_net_worth'] = total_net_worth
+    
+    return player_evaluations, game_progress, game_phase
+
+def train_win_predictor(game_history, epochs=1000):
+    """Train the neural network using historical game data."""
+    model = WinPredictorNN()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.MSELoss()
+    
+    # Convert game history to training data
+    inputs = []
+    targets = []
+    
+    for game_state in game_history:
+        # Extract features and outcomes from game history
+        player_evaluations, game_progress, _ = calculate_win_probabilities(game_state)
+        
+        for player, data in player_evaluations.items():
+            if isinstance(player, str):  # Skip non-player entries like 'total_net_worth'
+                continue
+                
+            # Features: [net_worth_ratio, monopoly_count, railroad_count, utility_count, cash_ratio, game_progress]
+            features = [
+                data['net_worth'] / player_evaluations['total_net_worth'],
+                data['monopoly_count'] / 8,  # Normalized
+                data['railroad_count'] / 4,
+                data['utility_count'] / 2,
+                data['cash_ratio'],
+                game_progress
+            ]
+            
+            # Target: [win_probability/100, bankruptcy_probability/100]
+            target = [data['win_probability']/100, data['bankruptcy_probability']/100]
+            
+            inputs.append(features)
+            targets.append(target)
+    
+    # Convert to tensors
+    inputs = torch.FloatTensor(inputs)
+    targets = torch.FloatTensor(targets)
+    
+    # Training loop
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
+        
+        if epoch % 100 == 0:
+            print(f"Epoch {epoch}, Loss: {loss.item()}")
+    
+    # Save the trained model
+    torch.save(model, 'win_predictor_model.pt')
+    print("Model trained and saved as 'win_predictor_model.pt'")
 
 
 def display_win_probabilities(game, player_evaluations, game_progress, game_phase):

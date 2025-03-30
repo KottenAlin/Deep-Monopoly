@@ -6,7 +6,7 @@ from colorama import init, Fore, Back, Style
 from game_models import Property, PropertyColor, PropertyStatus
 from board import Board
 from player import Player
-from stats import display_statistics, update_game_probabilities_with_winner
+from stats import display_statistics
 
 global bots_parameters
 bots_parameters = [
@@ -211,7 +211,7 @@ class MonopolyGame:
         if len(active_players) == 1:
             self.game_over = True
             print(f"\n{self.colors['success']}{active_players[0].name} wins the game!")
-            update_game_probabilities_with_winner(self, active_players[0])
+
     
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
