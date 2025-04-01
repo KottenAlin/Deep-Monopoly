@@ -5,6 +5,7 @@ import torch.optim as optim
 from enum import Enum
 import torch
 import matplotlib.pyplot as plt
+from stats import calculate_win_probabilities
 
 
 global parameters
@@ -586,12 +587,18 @@ class NeuralBot(Bot):
         self.output_dim = 10
         self.batch_size = 32  # Batch size for training
         
-        self.model = NeuralNetwork( input_dim=self.input_dim) # The neural network model
+        #self.model = NeuralNetwork( input_dim=self.input_dim) # The neural network model
+        #load  pre trained model
+        self.model = NeuralNetwork(input_dim=self.input_dim)
+        self.load_model()
+        
+        self.model.eval()  # Set the model to evaluation mode
+        
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.criterion = nn.MSELoss()
         self.memory = []  # For experience replay
         self.losses = []  # For tracking losses
-        self.epsilon = 0.3  # For exploration vs exploitation
+        self.epsilon = 0.0  # For exploration vs exploitation
         
     def _get_state(self, board, players):
         """Create a state representation for the neural network"""
@@ -695,11 +702,13 @@ class NeuralBot(Bot):
         for color, props in complete_sets.items():
             # Use neural network to evaluate property sets if not exploring
             if random.random() >= self.epsilon:
+                return super().decide_house_purchases()
+                
             # Create features for each property set
-                avg_position = sum(p.position for p in props) / len(props)
-                avg_houses = sum(p.houses for p in props) / len(props)
-                affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
-            
+            avg_position = sum(p.position for p in props) / len(props)
+            avg_houses = sum(p.houses for p in props) / len(props)
+            affordability = min(self.player.money / (props[0].house_price * len(props)), 1.0)
+        
             # Create a temporary state representation
             temp_state = self._get_state(self.game.board, self.game.players)
             
@@ -839,17 +848,78 @@ class NeuralBot(Bot):
         action = 0 #self.decide_action()
         reward = self.calculate__reward(old_state, new_state)
         
-        self.learn_from_experience(old_state, action, reward, new_state)
+        
+        #self.learn_from_experience(old_state, action, reward, new_state)
         
         if len(self.losses) % 100 == 0 and len(self.losses) > 0:
-            self.display_loss()
-            input("Press Enter to continue...")
+            a =1
+            #self.display_loss()
+            #self.save_model()
+            #input("Press Enter to continue...")
         
     def calculate__reward(self, old_state, new_state):
         """Calculate the reward based on the action taken"""
-        reward = 0
-        
         # Get player state before and after
+        old_money = old_state[0] * 2000  # Denormalize
+        new_money = new_state[0] * 2000  # Denormalize
+        
+        # Use win probability calculation from stats module
+        # Create temporary game state for evaluation
+        player_evaluations_old, _, _ = calculate_win_probabilities(self.game)
+        
+        # Store the current state
+        current_position = self.player.position
+        current_money = self.player.money
+        
+        # Temporarily modify the player state to match the new state
+        # This is a simplification - in a real implementation you'd need to
+        # create a complete game state snapshot for both old and new states
+        self.player.money = new_money
+        
+        # Calculate win probability for new state
+        player_evaluations_new, _, _ = calculate_win_probabilities(self.game)
+        
+        # Restore the player state
+        self.player.position = current_position
+        self.player.money = current_money
+        
+        # Get win probabilities
+        old_win_prob = 0
+        new_win_prob = 0
+        old_bankruptcy_risk = 0
+        new_bankruptcy_risk = 0
+        
+        # Extract win probabilities for this player
+        for player, data in player_evaluations_old.items():
+            if player == self.player:
+                old_win_prob = data.get('win_probability', 0)
+                old_bankruptcy_risk = data.get('bankruptcy_probability', 0)
+                break
+        
+        for player, data in player_evaluations_new.items():
+            if player == self.player:
+                new_win_prob = data.get('win_probability', 0)
+                new_bankruptcy_risk = data.get('bankruptcy_probability', 0)
+                break
+        
+        # Calculate reward components
+        win_prob_change = new_win_prob - old_win_prob
+        bankruptcy_risk_change = old_bankruptcy_risk - new_bankruptcy_risk  # Note the reversed order
+        
+        # Final reward is primarily based on win probability change
+        reward = win_prob_change * 3  # Scale up to make changes more significant
+        
+        # Add a smaller component for bankruptcy risk reduction
+        reward += bankruptcy_risk_change * 1.5
+        
+        # Small bonus for money increases to encourage cash accumulation
+        money_change = new_money - old_money
+        reward += money_change / 1000  # Small weight to money changes
+        
+        print(reward)
+        return reward
+        
+        '''# Get player state before and after
         old_money = old_state[0] * 2000  # Denormalize
         new_money = new_state[0] * 2000  # Denormalize
         
@@ -894,7 +964,7 @@ class NeuralBot(Bot):
         # This would need to be handled elsewhere or with additional state info
         
         # Scale final reward
-        return reward
+        return reward'''
 
     
     def learn_from_experience(self, old_state, action, reward, new_state):
@@ -918,6 +988,7 @@ class NeuralBot(Bot):
                 target_f[0, act] = target # Update the Q-value for the action taken
                 
                 # Train the model
+                
                 self.optimizer.zero_grad()
                 loss = self.criterion(current, target_f)
                 self.losses.append(loss.item())  # Track loss for display

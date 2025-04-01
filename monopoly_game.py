@@ -85,8 +85,6 @@ class MonopolyGame:
             bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
             neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip()) 
             bot_count = int(bot_count_input) if bot_count_input else 2
-            if neural_bot_count < 0:
-                neural_bot_count = 0
         except ValueError:
             time.sleep(2)
             MonopolyGame()
@@ -97,7 +95,7 @@ class MonopolyGame:
             MonopolyGame()
         
         self.board = Board()
-        self.players = self.create_players(player_count, bot_count, 0)
+        self.players = self.create_players(player_count, bot_count, neural_bot_count)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
@@ -114,7 +112,7 @@ class MonopolyGame:
                         player.bot.initialise_model()  # Initialize the neural network model
                     except Exception as e:
                         print(f"{self.colors['error']}Error initializing model: {e}")
-            print(f"{self.colors['success']}All neural bot models initialized successfully!")
+            input(f"{self.colors['success']}All neural bot models initialized successfully!")
         
         
     def create_players(self, player_count, bot_count, neural_bot_count):
@@ -558,7 +556,7 @@ class MonopolyGame:
             elif cash_amount < 0:
                 print(f"{self.colors['money']}You will receive: ${-cash_amount}")
             
-            accept = input(f"\n{self.colors['prompt']}{trade_partner.name}, do you accept this trade? (y/n): {self.colors['reset']}").lower() == 'y'
+            accept = input(f"\n{self.colors['prompt']}{trade_partner.name}, do you accept this trade? (y/n): {self.colors['reset']}").lower() != 'n'
             
             if accept:
                 # Execute the trade
@@ -764,7 +762,11 @@ class MonopolyGame:
     
     def play_turn(self):
         player = self.players[self.current_player_idx]
-        os.system('cls' if os.name == 'nt' else 'clear')
+        
+        if not player.is_bot:
+            input("tets...")
+        
+        #os.system('cls' if os.name == 'nt' else 'clear')
         
         if player.bankrupt:
             self.next_player()

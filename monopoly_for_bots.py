@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from game_models import Property, PropertyStatus
 from board import Board
 from player import Player
-from stats import save_game_history, record_game_history, save_game_to_json
+
+
 
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
@@ -381,7 +382,6 @@ class MonopolyGame:
         player = self.players[self.current_player_idx]
         #os.system('cls' if os.name == 'nt' else 'clear')
         
-        record_game_history(self, game_count=self.game_count) #save game state
         
         if player.bankrupt:
             self.next_player()
@@ -577,8 +577,12 @@ def main():
         # Update statistics
         game_stats["games_played"] += 1
 
-    save_game_history()
+    #save_game_history()
     display_statistics()
+    
+    print("\nGame over!")
+
+
     
 # Run the game
 if __name__ == "__main__":

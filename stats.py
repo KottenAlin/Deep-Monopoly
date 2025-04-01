@@ -5,7 +5,6 @@ import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import pickle
-import json
 
 game_history = [[]]
 
@@ -229,50 +228,6 @@ def save_game_history(filename="game_history.pkl"):
         pickle.dump(game_history, f)
         
 
-def save_game_to_json(filename="game_history.json"):
-    """Save game history to a JSON file for better interoperability."""
-    try:
-        # We need to convert game objects to serializable format
-        serializable_history = []
-        
-        for game_list in game_history:
-            serialized_games = []
-            for game in game_list:
-                # Create a basic representation of the game
-                game_data = {
-                    "players": [
-                        {
-                            "name": player.name,
-                            "money": player.money,
-                            "position": player.position,
-                            "bankrupt": player.bankrupt,
-                            "properties": [prop.name for prop in player.properties]
-                        }
-                        for player in game.players
-                    ],
-                    "properties": [
-                        {
-                            "name": space.name,
-                            "position": space.position,
-                            "price": space.price,
-                            "owner": space.owner.name if hasattr(space, 'owner') and space.owner else None,
-                            "houses": space.houses if hasattr(space, 'houses') else 0,
-                            "hotel": space.hotel if hasattr(space, 'hotel') else False,
-                            "mortgaged": space.status == PropertyStatus.MORTGAGED if hasattr(space, 'status') else False,
-                            "color": space.color.value if hasattr(space, 'color') else None
-                        }
-                        for space in game.board.spaces if isinstance(space, Property)
-                    ]
-                }
-                serialized_games.append(game_data)
-            serializable_history.append(serialized_games)
-        
-        with open(filename, 'w') as f:
-            json.dump(serializable_history, f, indent=2)
-        print(f"Game history saved to {filename}")
-    except Exception as e:
-        print(f"Error saving game history to JSON: {e}")
-
 def load_game_history(filename="game_history.pkl"):
     """Load game history from a file using pickle."""
     global game_history
@@ -285,10 +240,10 @@ def load_game_history(filename="game_history.pkl"):
         print(f"File {filename} not found. Starting with empty game history.")
         game_history = [[]]
         return game_history
-    except Exception as e:
+    '''except Exception as e:
         print(f"Error loading game history: {e}")
         game_history = [[]]
-        return game_history
+        return game_history'''
 
 def game_evaluation(game):
     """Evaluate each player's chances of winning based on game state."""
@@ -495,186 +450,8 @@ def display_win_probabilities(game, player_evaluations, game_progress, game_phas
 
 
 
-class WinPredictorNN(nn.Module):
-    def __init__(self):
-        super(WinPredictorNN, self).__init__()
-        # Input features: net_worth, monopoly_count, railroad_count, utility_count, cash_ratio, game_progress
-        self.layer1 = nn.Linear(6, 12)
-        self.layer2 = nn.Linear(12, 8)
-        self.layer3 = nn.Linear(8, 2)  # Output: [win_probability, bankruptcy_probability]
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-        
-    def forward(self, x):
-        x = self.relu(self.layer1(x))
-        x = self.relu(self.layer2(x))
-        x = self.sigmoid(self.layer3(x))
-        return x
+def main():
+    print("Training completed for all game histories.")
 
-def calculate_win_probabilities_nn(game):
-    """Calculate win and bankruptcy probabilities using a neural network."""
-    player_evaluations = {}
-    active_players = [p for p in game.players if not p.bankrupt]
-    
-    # Calculate game progress similar to the original function
-    total_properties = sum(1 for space in game.board.spaces if isinstance(space, Property))
-    owned_properties = sum(1 for space in game.board.spaces 
-                            if isinstance(space, Property) and space.owner is not None)
-    developed_properties = sum(1 for space in game.board.spaces
-                                if isinstance(space, Property) and hasattr(space, 'houses') 
-                                and (space.houses > 0 or (hasattr(space, 'hotel') and space.hotel)))
-    
-    game_progress = (owned_properties / total_properties) * 0.6 + (developed_properties / total_properties) * 0.4
-    game_phase = "Early" if game_progress < 0.3 else "Mid" if game_progress < 0.7 else "Late"
-    
-    total_net_worth = 0
-    
-    # Get player statistics for neural network input
-    for player in active_players:
-        net_worth = player.money
-        monopoly_count = 0
-        
-        # Count monopolies
-        color_counts = {}
-        for prop in player.properties:
-            if prop.color not in color_counts:
-                color_counts[prop.color] = 0
-            color_counts[prop.color] += 1
-            
-            # Add property value only if not mortgaged
-            if prop.status != PropertyStatus.MORTGAGED:
-                net_worth += prop.price
-                if hasattr(prop, 'houses') and prop.houses > 0:
-                    net_worth += prop.houses * prop.house_price
-                if hasattr(prop, 'hotel') and prop.hotel:
-                    net_worth += 5 * prop.house_price
-            else:
-                # For mortgaged properties, add the mortgage value
-                net_worth += prop.price / 2
-        
-        # Check for monopolies
-        for color, count in color_counts.items():
-            total_in_color = sum(1 for p in game.board.spaces 
-                                if isinstance(p, Property) and p.color == color)
-            if count == total_in_color and color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
-                monopoly_count += 1
-                
-        # Store player evaluation data
-        player_evaluations[player] = {
-            'net_worth': net_worth,
-            'monopoly_count': monopoly_count,
-            'railroad_count': sum(1 for p in player.properties if p.color == PropertyColor.RAILROAD),
-            'utility_count': sum(1 for p in player.properties if p.color == PropertyColor.UTILITY),
-            'cash_ratio': player.money / net_worth if net_worth > 0 else 0
-        }
-        total_net_worth += net_worth
-    
-    # Normalize net worth for neural network input
-    for player, eval_data in player_evaluations.items():
-        eval_data['net_worth_ratio'] = eval_data['net_worth'] / total_net_worth if total_net_worth > 0 else 1/len(active_players)
-    
-    # Initialize or load the model
-    try:
-        model = torch.load('win_predictor_model.pt')
-    except:
-        model = WinPredictorNN()
-    
-    # Run predictions for each player
-    for player, data in player_evaluations.items():
-        # Create input tensor
-        features = [
-            data['net_worth_ratio'],
-            data['monopoly_count'] / 8,  # Normalize by max possible monopolies
-            data['railroad_count'] / 4,  # Normalize by max railroads
-            data['utility_count'] / 2,   # Normalize by max utilities
-            data['cash_ratio'],
-            game_progress
-        ]
-        input_tensor = torch.FloatTensor(features)
-        
-        # Get prediction
-        with torch.no_grad():
-            output = model(input_tensor)
-        
-        # Store predictions
-        data['win_probability'] = float(output[0]) * 100  # Convert to percentage
-        data['bankruptcy_probability'] = float(output[1]) * 100
-    
-    # Fall back to original algorithm if predictions don't make sense
-    # (e.g., all players have very low win probability)
-    if max(data['win_probability'] for data in player_evaluations.values()) < 10:
-        player_evaluations, game_progress, game_phase = calculate_win_probabilities(game)
-        return player_evaluations, game_progress, game_phase
-    
-    # Normalize probabilities to sum to 100%
-    total_win_prob = sum(data['win_probability'] for data in player_evaluations.values())
-    total_bankruptcy_prob = sum(data['bankruptcy_probability'] for data in player_evaluations.values())
-    
-    if total_win_prob > 0:
-        for player, data in player_evaluations.items():
-            data['win_probability'] = (data['win_probability'] / total_win_prob) * 100
-    
-    if total_bankruptcy_prob > 0:
-        for player, data in player_evaluations.items():
-            data['bankruptcy_probability'] = (data['bankruptcy_probability'] / total_bankruptcy_prob) * 100
-    
-    # Add total net worth to evaluations dictionary
-    player_evaluations['total_net_worth'] = total_net_worth
-    
-    return player_evaluations, game_progress, game_phase
-
-def train_win_predictor(game_history, epochs=1000):
-    """Train the neural network using historical game data."""
-    model = WinPredictorNN()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
-    
-    # Convert game history to training data
-    inputs = []
-    targets = []
-    
-    for game_state in game_history:
-        # Extract features and outcomes from game history
-        player_evaluations, game_progress, _ = calculate_win_probabilities(game_state)
-        
-        for player, data in player_evaluations.items():
-            if isinstance(player, str):  # Skip non-player entries like 'total_net_worth'
-                continue
-                
-            # Features: [net_worth_ratio, monopoly_count, railroad_count, utility_count, cash_ratio, game_progress]
-            features = [
-                data['net_worth'] / player_evaluations['total_net_worth'],
-                data['monopoly_count'] / 8,  # Normalized
-                data['railroad_count'] / 4,
-                data['utility_count'] / 2,
-                data['cash_ratio'],
-                game_progress
-            ]
-            
-            # Target: [win_probability/100, bankruptcy_probability/100]
-            target = [data['win_probability']/100, data['bankruptcy_probability']/100]
-            
-            inputs.append(features)
-            targets.append(target)
-    
-    # Convert to tensors
-    inputs = torch.FloatTensor(inputs)
-    targets = torch.FloatTensor(targets)
-    
-    # Training loop
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-        
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch}, Loss: {loss.item()}")
-    
-    # Save the trained model
-    torch.save(model, 'win_predictor_model.pt')
-    print("Model trained and saved as 'win_predictor_model.pt'")
-
-
-
+if __name__ == "__main__":
+    main()
