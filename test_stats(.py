@@ -6,7 +6,7 @@ import pickle
 import json
 
 
-from stats import (
+from code.stats import (
     display_statistics,
     display_extended_statistics,
     calculate_win_probabilities,

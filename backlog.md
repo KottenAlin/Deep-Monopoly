@@ -13,6 +13,7 @@
 - unit test
 - add strandard global variables
 - add folders for player and board
+- elo rating for the bot?
 
 ## In progress
 

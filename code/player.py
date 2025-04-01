@@ -3,8 +3,6 @@ from game_models import PropertyStatus, Property
 from colorama import Fore, Style, Back
 
 
-
-
 class Player:
     def __init__(self, name, token, is_bot=False, game=None, bot_parameters=parameters, bot_type='default'):
         '''  '''

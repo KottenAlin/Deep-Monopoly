@@ -9,7 +9,6 @@ from board import Board
 from player import Player
 
 
-
 ''' 
     Monopoly Game for Bot Players with less things #printed for speed
     '''
@@ -77,6 +76,7 @@ class MonopolyGame:
         self.doubles_count = 0
         self.game_count = game_count
         self.game_over = False
+        self.winner = None
         
         # Initialize neural bots if there are any
         self.turn_count = 0
@@ -133,7 +133,8 @@ class MonopolyGame:
         if total_assets < amount_due:
             #rint(f"\n{player.name} is bankrupt!")
             player.bankrupt = True
-            game_stats["bankrupt_count"][player.name] += 1
+            if game_stats["bankrupt_count"]:
+                game_stats["bankrupt_count"][player.name] += 1
             self.transfer_assets(player, recipient)
         else:
             if player.bot.decide_mortgage_property(amount_due): # Can the bot mortgage property?
@@ -141,8 +142,8 @@ class MonopolyGame:
                 return True
             else:
                 player.bankrupt = True
-                game_stats["bankrupt_count"][player.name] += 1
-                #(f"\n{player.name} is bankrupt!")
+                if  game_stats["bankrupt_count"]:
+                    game_stats["bankrupt_count"][player.name] += 1
                 self.transfer_assets(player, recipient)
         return False
         
@@ -162,8 +163,10 @@ class MonopolyGame:
         #print(len(active_players), active_players)
         if len(active_players) == 1:
             self.game_over = True
-            print(f"{active_players[0].name} wins the game!")
-            game_stats["wins_by_player"][active_players[0].name] += 1
+            self.winner = active_players[0]
+            print(f"{self.winner.name} wins the game!")
+            if game_stats["wins_by_player"]:
+                game_stats["wins_by_player"][active_players[0].name] += 1
     
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -427,7 +430,7 @@ class MonopolyGame:
         # Find the player with the most money
         active_players = [p for p in self.players if not p.bankrupt]
         if active_players:
-            winner = max(active_players, key=lambda p: p.money)
+            self.winner = max(active_players, key=lambda p: p.money)
             
             # Calculate total value (money + properties)
             player_values = {}
@@ -445,8 +448,9 @@ class MonopolyGame:
             for name, value in sorted(player_values.items(), key=lambda x: x[1], reverse=True):
                 print(f"{name}: ${value}")'''
             
-            print(f"{winner.name} WINS THE GAME WITH ${winner.money}!")
-            game_stats["wins_by_player"][winner.name] += 1
+            print(f"{self.winner.name} WINS THE GAME WITH ${self.winner.money}!")
+            if game_stats["wins_by_player"]:
+                game_stats["wins_by_player"][self.winner.name] += 1
             self.game_over = True
             return
     
@@ -462,7 +466,8 @@ class MonopolyGame:
             self.play_turn()
             
             if turns >= 500:
-                game_stats["game_over_500_turns"] += 1
+                if game_stats["game_over_500_turns"]:
+                    game_stats["game_over_500_turns"] += 1
                 self.decide_winner()
             
             if turns % 100 == 0 and turns != 0:
@@ -471,6 +476,17 @@ class MonopolyGame:
                 input("Press enter to continue...")'''
             turns += 1
             
+        
+            
+        # Add at the end:
+        result = {
+            'turn_count': self.turn_count,
+            'player_count': len(self.players),
+            'winner': self.winner.name if self.winner else None,
+        }
+        
+        return result
+        
         #input("display statistics... ")
         #self.display_statistics()
         

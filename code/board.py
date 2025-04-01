@@ -1,6 +1,6 @@
 import random
 from colorama import Fore, Back, Style
-from game_models import Property, PropertyColor
+from code.game_models import Property, PropertyColor
 
 
 class Board:

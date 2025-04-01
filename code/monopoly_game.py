@@ -48,6 +48,7 @@ bots_parameters = [
         }
         
     ]
+
 class MonopolyGame:
     def __init__(self):
         #clear screan
@@ -83,7 +84,7 @@ class MonopolyGame:
             
             # Get bot count with default value handling
             bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
-            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip()) 
+            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip()) if neural_bot_count else 0
             bot_count = int(bot_count_input) if bot_count_input else 2
         except ValueError:
             time.sleep(2)
@@ -113,7 +114,6 @@ class MonopolyGame:
                     except Exception as e:
                         print(f"{self.colors['error']}Error initializing model: {e}")
             input(f"{self.colors['success']}All neural bot models initialized successfully!")
-        
         
     def create_players(self, player_count, bot_count, neural_bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
@@ -211,7 +211,6 @@ class MonopolyGame:
             self.game_over = True
             print(f"\n{self.colors['success']}{active_players[0].name} wins the game!")
 
-    
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
             self.offer_property_purchase(player, property)
@@ -251,6 +250,7 @@ class MonopolyGame:
             print(f"{self.colors['warning']}{player.name} declined to buy the property.")
             # Start auction
             self.handel_auction(property)
+
     def handel_auction(self, property):
     
         print(f"\n{self.colors['title']}AUCTION for {self.colors['property']}{property.name} (Starting price: {self.colors['money']}$1)")
@@ -913,6 +913,7 @@ class MonopolyGame:
                     display_statistics(self) # Display statistics if player chooses to
             turns += 1
             #time.sleep(1)  # Small pause between turns
+            
         if input(f"{self.colors['prompt']}Display statistics? (y/n): {self.colors['reset']}").lower() == 'y':
             display_statistics(self)
         

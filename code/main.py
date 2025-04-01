@@ -1,9 +1,9 @@
 import sys
 import os
-import monopoly_game
-import monopoly_for_bots
+import monopoly_game as monopoly_game
+import monopoly_for_bots 
 from colorama import init, Fore, Back, Style
-import stats
+import stats as stats
 
 
 colors = {

@@ -1012,3 +1012,5 @@ class NeuralBot(Bot):
         """Load a previously trained model"""
         self.model.load_state_dict(torch.load(path))
         self.model.eval()
+
+
