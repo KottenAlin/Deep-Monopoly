@@ -713,7 +713,6 @@ class Bot:
         if self.player.money < min_cash:
             self.decide_mortgage_property(min_cash - self.player.money)
 
-
 class NeuralNetwork(nn.Module):
     def __init__(self, input_dim=100, hidden_dim=64, output_dim=10):
         super(NeuralNetwork, self).__init__()  # Initialize the neural network
@@ -1199,7 +1198,7 @@ class NeuralBot(Bot):
         self.model.eval()
 
 
-class MCTSNeuralBot(NeuralBot):
+class MCTSBot(Bot):
     def __init__(
         self, player, game, parameters=parameters, display=True, property=None
     ):
@@ -1207,141 +1206,71 @@ class MCTSNeuralBot(NeuralBot):
         self.simulation_budget = 100  # Number of simulations to run
         self.search_time = 1.0  # Maximum search time in seconds
 
-    def use_mcts(self, action_type):
-        """Decide whether to use MCTS for this decision type based on importance"""
-        # Use MCTS for important decisions, neural net for less critical ones
-        important_decisions = [
-            ActionType.BUY_PROPERTY,
-            ActionType.BUILD_HOUSE,
-            ActionType.MORTGAGE,
-            ActionType.UNMORTGAGE,
-            ActionType.JAIL_STRATEGY,
-        ]
-        return action_type in important_decisions
-
     def decide_buy_property(self, property):
         """Use MCTS to decide whether to buy property"""
-        if random.random() < self.epsilon:  # Exploration
-            return super().decide_buy_property(property)
+        # Create game state and run MCTS
+        state = State(self.game)
+        mcts = MCTS(state, self.simulation_budget, self.search_time)
+        best_action = mcts.search()
 
-        # Use neural network as a baseline
-        neural_score = self.get_state_and_predict(0)
-
-        # For important decisions, also use MCTS
-        if self.use_mcts(ActionType.BUY_PROPERTY):
-            # Create game state and run MCTS
-            state = State(self.game)
-            mcts = MCTS(state, self.simulation_budget, self.search_time)
-            best_action = mcts.search()
-
-            if best_action and best_action.action_type == ActionType.BUY_PROPERTY:
-                # MCTS recommends buying
-                return True
-            elif neural_score > 0.7:  # Highly confident neural prediction
-                return True
-            else:
-                return False
-        else:
-            # Just use neural network
-            return neural_score > 0.5
+        if best_action and best_action.action_type == ActionType.BUY_PROPERTY:
+            # MCTS recommends buying
+            return True
+        
+        # Fall back to heuristic logic if MCTS doesn't provide a clear recommendation
+        return super().decide_buy_property(property)
 
     def decide_house_purchases(self):
-        if random.random() < self.epsilon:
-            return super().decide_house_purchases()
+        # Use MCTS to evaluate building houses
+        state = State(self.game)
+        mcts = MCTS(state, self.simulation_budget, self.search_time)
+        best_action = mcts.search()
 
-        # Neural network score for house purchase
-        neural_score = self.get_state_and_predict(2)
-
-        if self.use_mcts(ActionType.BUILD_HOUSE):
-            # Use MCTS to evaluate building houses
-            state = State(self.game)
-            mcts = MCTS(state, self.simulation_budget, self.search_time)
-            best_action = mcts.search()
-
-            if best_action and best_action.action_type == ActionType.BUILD_HOUSE:
-                # MCTS recommends building a house on this property
-                return best_action.data
-            elif neural_score > 0.7:  # Highly confident neural prediction
-                # Fall back to neural bot logic for property selection
-                return super().decide_house_purchases()
-            else:
-                return None
-        else:
-            # Use neural network decision
-            if neural_score < 0.5:
-                return None
-            return super().decide_house_purchases()
+        if best_action and best_action.action_type == ActionType.BUILD_HOUSE:
+            # MCTS recommends building a house on this property
+            return best_action.data
+        
+        # Fall back to heuristic approach
+        return super().decide_house_purchases()
 
     def decide_mortgage_property(self, amount_needed):
-        if random.random() < self.epsilon:
-            return super().decide_mortgage_property(amount_needed)
+        state = State(self.game)
+        mcts = MCTS(state, self.simulation_budget, self.search_time)
+        best_action = mcts.search()
 
-        neural_score = self.get_state_and_predict(6)
-
-        if self.use_mcts(ActionType.MORTGAGE):
-            state = State(self.game)
-            mcts = MCTS(state, self.simulation_budget, self.search_time)
-            best_action = mcts.search()
-
-            if best_action and best_action.action_type == ActionType.MORTGAGE:
-                # Return true to signal we should mortgage the property MCTS selected
-                return True
-            elif neural_score > 0.7:  # Neural network is confident
-                return True
-            else:
-                return False
-        else:
-            return neural_score > 0.5
+        if best_action and best_action.action_type == ActionType.MORTGAGE:
+            # Return true to signal we should mortgage the property MCTS selected
+            return True
+        
+        # Fall back to heuristic approach
+        return super().decide_mortgage_property(amount_needed)
 
     def decide_unmortgage_property(self):
-        if random.random() < self.epsilon:
-            return super().decide_unmortgage_property()
+        state = State(self.game)
+        mcts = MCTS(state, self.simulation_budget, self.search_time)
+        best_action = mcts.search()
 
-        neural_score = self.get_state_and_predict(7)
-
-        if self.use_mcts(ActionType.UNMORTGAGE):
-            state = State(self.game)
-            mcts = MCTS(state, self.simulation_budget, self.search_time)
-            best_action = mcts.search()
-
-            if best_action and best_action.action_type == ActionType.UNMORTGAGE:
-                # We found a property to unmortgage
-                return True
-            elif neural_score > 0.7:  # Neural network is confident
-                return True
-            else:
-                return False
-        else:
-            return neural_score > 0.5
+        if best_action and best_action.action_type == ActionType.UNMORTGAGE:
+            # We found a property to unmortgage via MCTS
+            return best_action.data
+        
+        # Fall back to heuristic approach
+        return super().decide_unmortgage_property()
 
     def decide_jail_strategy(self):
-        if random.random() < self.epsilon:
-            return super().decide_jail_strategy()
+        state = State(self.game)
+        mcts = MCTS(state, self.simulation_budget, self.search_time)
+        best_action = mcts.search()
 
-        # Neural prediction for jail strategy (0-1 range)
-        neural_score = self.get_state_and_predict(3)
-
-        if self.use_mcts(ActionType.JAIL_STRATEGY):
-            state = State(self.game)
-            mcts = MCTS(state, self.simulation_budget, self.search_time)
-            best_action = mcts.search()
-
-            if best_action and best_action.action_type == ActionType.JAIL_STRATEGY:
-                # Use the strategy MCTS recommended
-                return best_action.data
-
-        # If MCTS didn't help or wasn't used, fall back to neural network
-        if neural_score < 0.33:
-            return "1"  # Pay to get out
-        elif neural_score < 0.66:
-            return "2"  # Use get out of jail card
-        else:
-            return "3"  # Try rolling doubles
+        if best_action and best_action.action_type == ActionType.JAIL_STRATEGY:
+            # Use the strategy MCTS recommended
+            return best_action.data
+        
+        # Fall back to heuristic approach
+        return super().decide_jail_strategy()
 
     def make_move(self):
-        """Make all decisions for a turn with MCTS enhancing critical decisions"""
-        old_state = self._get_state(self.game.board, self.game.players)
-
+        """Make all decisions for a turn using MCTS for critical decisions"""
         # For jail decisions, use MCTS-enhanced logic
         if self.player.jail_turns > 0:
             return self.decide_jail_strategy()
@@ -1360,15 +1289,14 @@ class MCTSNeuralBot(NeuralBot):
                 self.game.build_house_bot(self.player, property)
             elif best_action.action_type == ActionType.MORTGAGE:
                 property = best_action.data
-                property.mortgage()
+                property.mortgage(self.player)
             elif best_action.action_type == ActionType.UNMORTGAGE:
                 property = best_action.data
                 self.player.money -= property.unmortgage_cost
                 property.unmortgage()
+            # Could handle other action types as well
 
-        # For other decisions, use the parent class logic which includes neural predictions
-        # but enhanced with MCTS for critical decisions
-
+        # For other decisions that MCTS might not cover, use the parent Bot logic
         # Development is prioritized based on development focus
         if random.random() < self.development_focus:
             property = self.decide_house_purchases()
@@ -1387,19 +1315,3 @@ class MCTSNeuralBot(NeuralBot):
         min_cash = 50 + (self.cash_reserve_preference * 200)
         if self.player.money < min_cash:
             self.decide_mortgage_property(min_cash - self.player.money)
-
-        # Calculate reward for learning
-        new_state = self._get_state(self.game.board, self.game.players)
-        reward = self.calculate_reward(old_state, new_state)
-
-        # Learn from this experience
-        # Commented out as per your code, but can be enabled for training
-        # action = 0  # Would need to properly map the action taken
-        # self.learn_from_experience(old_state, action, reward, new_state)
-
-    def get_state_and_predict(self, output_column):
-        """Renamed from get_state_and_predict to fix typo"""
-        state = self._get_state(self.game.board, self.game.players)
-        prediction = self.model.forward(state.unsqueeze(0))  # Add batch dimension
-
-        return prediction[0][output_column].item()

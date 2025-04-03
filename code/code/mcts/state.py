@@ -1,6 +1,7 @@
 import copy
 import random
 from enum import Enum
+from game_models import PropertyStatus, PropertyColor
 
 class ActionType(Enum):
     BUY_PROPERTY = 0
@@ -26,7 +27,7 @@ class State:
     ''' Class representing a state in the game of Monopoly for MCTS '''
     def __init__(self, game, player_index=None):
         self.game = copy.deepcopy(game)  # Deep copy to avoid modifying the original game
-        self.current_player_index = player_index if player_index is not None else self.game.current_player_index
+        self.current_player_index = player_index if player_index is not None else self.game.current_player_idx
         self.board = self.game.board
         self.players = self.game.players
         self.current_player = self.players[self.current_player_index]
@@ -40,8 +41,8 @@ class State:
         actions.append(Action(ActionType.END_TURN))
         
         # Add roll dice if not rolled yet
-        if not self.game.dice_rolled:
-            actions.append(Action(ActionType.ROLL_DICE))
+        '''if not self.game.dice_rolled:
+            actions.append(Action(ActionType.ROLL_DICE))'''
         
         # If on unowned property and can afford it
         current_space = self.board.spaces[player.position]
@@ -57,12 +58,12 @@ class State:
         
         # Check for unmortgageable properties
         for prop in player.properties:
-            if prop.is_mortgaged and player.money >= prop.unmortgage_cost:
+            if prop.status == PropertyStatus.MORTGAGED and player.money >= prop.unmortgage_cost:
                 actions.append(Action(ActionType.UNMORTGAGE, prop))
         
         # Check for mortgageable properties
         for prop in player.properties:
-            if not prop.is_mortgaged and prop.houses == 0:
+            if prop.status != PropertyStatus.MORTGAGED and prop.houses == 0:
                 actions.append(Action(ActionType.MORTGAGE, prop))
         
         # If in jail, add jail strategies
@@ -71,9 +72,10 @@ class State:
             actions.append(Action(ActionType.JAIL_STRATEGY, "2"))  # Use get out of jail card
             actions.append(Action(ActionType.JAIL_STRATEGY, "3"))  # Roll for doubles
         
-        # Trade options (simplified)
-        if not self.game.dice_rolled:
-            actions.append(Action(ActionType.INITIATE_TRADE))
+        # Check for trades
+        for prop in player.properties:
+            if prop.status != PropertyStatus.MORTGAGED:
+                actions.append(Action(ActionType.INITIATE_TRADE, prop))
         
         return actions
 
@@ -111,16 +113,13 @@ class State:
         game = new_state.game
         player = new_state.current_player
         
+        
         if action.action_type == ActionType.END_TURN:
-            game.end_turn()
-            new_state.current_player_index = game.current_player_index
-            new_state.current_player = game.players[new_state.current_player_index]
+            game.next_player()
         
         elif action.action_type == ActionType.ROLL_DICE:
             # Simulate dice roll
-            dice1, dice2 = random.randint(1, 6), random.randint(1, 6)
-            game.move_player(player, dice1 + dice2)
-            game.dice_rolled = True
+            game.roll_dice()
             
             # Handle landing on spaces
             space = game.board.spaces[player.position]
@@ -157,8 +156,8 @@ class State:
                 player.money -= 50
                 player.jail_turns = 0
             elif strategy == "2":  # Use card
-                if player.jail_cards > 0:
-                    player.jail_cards -= 1
+                if player.jail_free_cards > 0:
+                    player.jail_free_cards -= 1
                     player.jail_turns = 0
             elif strategy == "3":  # Try rolling doubles
                 # In simulation, assume 1/6 chance of getting out
@@ -209,7 +208,7 @@ class State:
         # Calculate net worth
         net_worth = player.money
         for prop in player.properties:
-            if not prop.is_mortgaged:
+            if not prop.status == PropertyStatus.MORTGAGED:
                 net_worth += prop.price
                 if hasattr(prop, 'houses'):
                     net_worth += prop.houses * prop.house_price

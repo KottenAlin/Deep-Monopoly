@@ -84,7 +84,7 @@ class MonopolyGame:
             
             # Get bot count with default value handling
             bot_count_input = input(f"{self.colors['prompt']}Enter number of bots (default 2): {self.colors['reset']}").strip()
-            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip()) if neural_bot_count else 0
+            neural_bot_count = int(input(f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}").strip())
             bot_count = int(bot_count_input) if bot_count_input else 2
         except ValueError:
             time.sleep(2)
@@ -96,7 +96,7 @@ class MonopolyGame:
             MonopolyGame()
         
         self.board = Board()
-        self.players = self.create_players(player_count, bot_count, neural_bot_count)
+        self.players = self.create_players(player_count, bot_count, neural_bot_count if neural_bot_count else 0)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
