@@ -11,7 +11,7 @@ from Bot import Bot
 import json
 import os
 from game_models import Property, PropertyColor, PropertyStatus
-import types  # Add this import
+import types
 
 
 # hyperparameters
@@ -27,18 +27,95 @@ class MonopolyNeuralModel(nn.Module):
     def __init__(self, input_size=124, hidden_size=64, output_size=10):
         super(MonopolyNeuralModel, self).__init__()
 
-        # Define network architecture
-        self.network = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, output_size),
-            nn.Sigmoid(),  # Output values between 0-1 for parameters
-        )
+        # Deeper network with residual connections
+        self.input_layer = nn.Linear(input_size, hidden_size)
+        self.hidden1 = nn.Linear(hidden_size, hidden_size)
+        self.hidden2 = nn.Linear(hidden_size, hidden_size)
+        self.output_layer = nn.Linear(hidden_size, output_size)
+
+        # Batch normalization for more stable training
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.bn2 = nn.BatchNorm1d(hidden_size)
+
+        # Dropout for regularization
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        return self.network(x)
+        # Check if input is 1D (single sample) and add batch dimension if needed
+        add_batch_dim = False
+        if x.dim() == 1:
+            x = x.unsqueeze(0)  # Add batch dimension
+            add_batch_dim = True
+
+        x = torch.relu(self.input_layer(x))
+        x = self.bn1(x)
+
+        identity = x
+        x = torch.relu(self.hidden1(x))
+        x = self.bn2(x)
+        x = self.dropout(x)
+        x = x + identity  # Residual connection
+
+        x = torch.relu(self.hidden2(x))
+        x = self.dropout(x)
+
+        output = torch.sigmoid(self.output_layer(x))
+
+        # Remove batch dimension if it was added earlier
+        if add_batch_dim:
+            output = output.squeeze(0)
+
+        return output
+
+
+class PrioritizedReplayBuffer:
+    def __init__(self, capacity, alpha=0.6, beta=0.4):
+        self.capacity = capacity
+        self.alpha = alpha  # Priority exponent
+        self.beta = beta  # Importance sampling exponent
+        self.buffer = []
+        self.priorities = np.zeros(capacity, dtype=np.float32)
+        self.position = 0
+
+    def __len__(self):
+        """Return the current size of the buffer"""
+        return len(self.buffer)
+
+    def add(self, experience, priority=None):
+        if priority is None:
+            priority = max(self.priorities) if self.buffer else 1.0
+
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(experience)
+        else:
+            self.buffer[self.position] = experience
+
+        self.priorities[self.position] = priority
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        if len(self.buffer) < batch_size:
+            return []
+
+        # Calculate probabilities
+        probs = self.priorities[: len(self.buffer)] ** self.alpha
+        probs /= probs.sum()
+
+        # Sample indices based on priorities
+        indices = np.random.choice(len(self.buffer), batch_size, p=probs)
+
+        # Calculate importance sampling weights
+        weights = (len(self.buffer) * probs[indices]) ** -self.beta
+        weights /= weights.max()  # Normalize
+
+        # Retrieve experiences
+        experiences = [self.buffer[idx] for idx in indices]
+
+        return experiences, indices, weights
+
+    def update_priorities(self, indices, priorities):
+        for idx, priority in zip(indices, priorities):
+            self.priorities[idx] = priority
 
 
 class NeuralAlgorithm:
@@ -56,11 +133,13 @@ class NeuralAlgorithm:
         self.model = MonopolyNeuralModel(
             self.input_size, self.hidden_size, self.output_size
         )
+        # Set model to eval mode by default
+        self.model.eval()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.criterion = nn.MSELoss()
 
         # Experience replay memory
-        self.memory = []
+        self.memory = PrioritizedReplayBuffer(capacity=self.memory_size)
 
         # Tracking metrics
         self.win_rates = []
@@ -215,7 +294,12 @@ class NeuralAlgorithm:
                 padded_state[:min_size] = state[:min_size]
                 state = padded_state
 
-            parameters = self.model(state).tolist()
+            # Add batch dimension
+            state = state.unsqueeze(0)  # Convert from [features] to [1, features]
+            output = self.model(state)
+            parameters = output.squeeze(
+                0
+            ).tolist()  # Remove batch dimension from output
 
             # Convert to dictionary with parameter names
             return {
@@ -271,37 +355,55 @@ class NeuralAlgorithm:
             + (monopoly_factor * 2)
         )
 
+    def calculate_dynamic_reward(self, game, player, initial_state, final_state):
+        """Dynamic reward shaping based on game stage"""
+        base_reward = self._calculate_reward(initial_state, final_state, player.money)
+        game_stage = min(1.0, game.turn_count / 50)  # 0 to 1 based on game progression
+
+        if game_stage < 0.3:  # Early game: Focus on property acquisition
+            property_weight = 2.0 - game_stage * 3
+            base_reward += property_weight * (
+                self.count_properties(final_state)
+                - self.count_properties(initial_state)
+            )
+        elif game_stage < 0.7:  # Mid game: Focus on development and monopolies
+            monopoly_weight = 3.0
+            development_weight = 2.0
+            base_reward += monopoly_weight * (
+                self.count_monopolies(final_state)
+                - self.count_monopolies(initial_state)
+            )
+            base_reward += development_weight * (
+                self.count_development(final_state)
+                - self.count_development(initial_state)
+            )
+        else:  # Late game: Focus on cash and opponent bankruptcy
+            cash_weight = 1.5
+            opponent_bankruptcy = sum(
+                1 for p in game.players if p != player and p.bankrupt
+            )
+            base_reward += cash_weight * (player.money / 2000.0)
+            base_reward += opponent_bankruptcy * 0.5
+
+        return base_reward
+
     def store_experience(self, state, parameters, reward, next_state):
         """Store experience in replay memory"""
         # Convert parameters dict to list
         param_list = [parameters[name] for name in self.parameter_names]
 
-        self.memory.append((state, param_list, reward, next_state))
-
-        # Limit memory size
-        if len(self.memory) > self.memory_size:
-            self.memory.pop(0)
+        self.memory.add((state, param_list, reward, next_state))
 
     def train_from_memory(self):
         """Train neural network from experience replay memory with improved learning"""
-        if len(self.memory) < self.batch_size:
+        if len(self.memory.buffer) < self.batch_size:
             return 0
 
+        # Set model to training mode
+        self.model.train()
+
         # Sample batch with priority for high-reward experiences
-        experiences = [
-            (exp, abs(exp[2])) for exp in self.memory
-        ]  # (experience, abs_reward)
-        experiences.sort(key=lambda x: x[1], reverse=True)
-
-        # Take 80% from high-reward experiences, 20% random for exploration
-        high_reward_count = int(self.batch_size * 0.8)
-        high_reward_batch = [exp[0] for exp in experiences[: high_reward_count * 2]]
-        random_batch = random.sample(self.memory, self.batch_size - high_reward_count)
-
-        # Combine samples, with extra importance to recent high-reward experiences
-        batch = random.sample(high_reward_batch, high_reward_count) + random_batch
-
-        # Prepare batch data
+        batch, indices, weights = self.memory.sample(self.batch_size)
         states = torch.stack(
             [self._ensure_state_size(experience[0]) for experience in batch]
         )
@@ -343,6 +445,14 @@ class NeuralAlgorithm:
         loss.backward()
         self.optimizer.step()
 
+        # Update priorities in replay buffer - Convert scalar to list of same value for each index
+        loss_value = loss.detach().item() + 1e-5
+        priorities_list = [loss_value] * len(indices)
+        self.memory.update_priorities(indices, priorities_list)
+
+        # Return to eval mode
+        self.model.eval()
+
         return loss.item()
 
     def _ensure_state_size(self, state):
@@ -380,7 +490,7 @@ class NeuralAlgorithm:
                 # Play game with neural bot and opponents
                 game = MonopolyGame(
                     bot_count=4,
-                    neural_bot_count=1,  # First player is neural bot
+                    neural_bot_count=4,  # First player is neural bot
                     bots_parameters=bots_parameters,
                 )
 
@@ -459,14 +569,37 @@ class NeuralAlgorithm:
                 print(f"    {name}: {value:.4f}")
 
             # Save model after each epoch
-
             # self.save_model(f"models/neural_algorithm_model_epoch_{epoch+1}.pth")
 
             # At the end of each epoch in run_training_games
             if epoch < num_epochs - 1:  # Don't clear after final epoch
                 # Keep the 20% highest-reward experiences, clear the rest
-                self.memory.sort(key=lambda x: x[2], reverse=True)
-                self.memory = self.memory[: int(len(self.memory) * 0.2)]
+                # Get experiences sorted by reward
+                experiences = []
+                indices = list(range(len(self.memory.buffer)))
+                for idx in indices:
+                    experiences.append(
+                        (self.memory.buffer[idx], self.memory.priorities[idx], idx)
+                    )
+
+                # Sort experiences by reward (position 2 in the experience tuple)
+                experiences.sort(key=lambda x: x[0][2], reverse=True)
+
+                # Keep only the top 20%
+                keep_count = int(len(experiences) * 0.2)
+
+                # Create a new buffer with only the top experiences
+                new_buffer = []
+                new_priorities = np.zeros(self.memory.capacity, dtype=np.float32)
+
+                for i, (exp, priority, _) in enumerate(experiences[:keep_count]):
+                    new_buffer.append(exp)
+                    new_priorities[i] = priority
+
+                # Update memory buffer
+                self.memory.buffer = new_buffer
+                self.memory.priorities = new_priorities
+                self.memory.position = len(new_buffer) % self.memory.capacity
 
             # Update learning rate
             self.optimizer.param_groups[0]["lr"] = self.learning_rate * (
@@ -482,6 +615,7 @@ class NeuralAlgorithm:
             "rewards": self.rewards_history,
             "rewards_history": self.rewards_history,
             "avg_game_length": self.avg_game_length,
+            "final_parameters": current_params,
         }
         return results
 
@@ -553,17 +687,23 @@ class NeuralAlgorithm:
         for i, weights in enumerate(parameters):
             plt.subplot(grid_rows, grid_cols, i + 1)
 
-            # Normalize the weights for better visualization
-            weights_normalized = weights / (np.abs(weights).max() + 1e-10)
-
-            # Create heatmap
-            im = plt.imshow(weights_normalized, cmap="coolwarm", aspect="auto")
+            # Handle 1D weights by reshaping to 2D for visualization
+            if len(weights.shape) == 1:
+                # Reshape 1D weights to a 2D array for visualization
+                weights_reshaped = weights.reshape(1, -1)  # Convert to 2D (1 x N)
+                weights_normalized = weights_reshaped / (
+                    np.abs(weights_reshaped).max() + 1e-10
+                )
+                im = plt.imshow(weights_normalized, cmap="coolwarm", aspect="auto")
+                plt.title(f"Layer {i+1} Weights (Bias)\nShape: {weights.shape}")
+            else:
+                # Normal case - 2D weights
+                weights_normalized = weights / (np.abs(weights).max() + 1e-10)
+                im = plt.imshow(weights_normalized, cmap="coolwarm", aspect="auto")
+                plt.title(f"Layer {i+1} Weights\nShape: {weights.shape}")
 
             # Add colorbar
             plt.colorbar(im, fraction=0.046, pad=0.04)
-
-            # Add layer information
-            plt.title(f"Layer {i+1} Weights\nShape: {weights.shape}")
             plt.xlabel("Input neurons")
             plt.ylabel("Output neurons")
 
@@ -714,7 +854,7 @@ class ActionNeuralBot(Bot):
         if input_size is None or output_size is None:
             print("Warning: Could not determine model dimensions, using defaults")
             input_size = self.input_dim
-            output_size = 7  # NeuralAlgorithm default
+            output_size = 10  # NeuralAlgorithm default
 
         print(f"External model dimensions: input={input_size}, output={output_size}")
         print(
@@ -1064,7 +1204,7 @@ class ActionNeuralBot(Bot):
         action_probs = self._get_action_probabilities()
 
         # Safety check
-        if len(action_probs) < 7:
+        if len(action_probs) < 10:
             return super().decide_mortgage_property(amount_needed)
 
         mortgage_decision = action_probs[
@@ -1090,8 +1230,8 @@ class ActionNeuralBot(Bot):
             return super().decide_unmortgage_property()
 
         unmortgage_decision = action_probs[
-            7
-        ].item()  # Eighth output is unmortgage_property
+            10
+        ].item()  # Tenth output is unmortgage_property
 
         if unmortgage_decision <= 0.5:
             return False
@@ -1114,9 +1254,9 @@ class ActionNeuralBot(Bot):
         action_probs = self._get_action_probabilities()
 
         # Safety check - ensure action_probs has enough dimensions
-        if len(action_probs) < 7:
+        if len(action_probs) < 10:
             print(
-                f"Warning: Action probabilities has only {len(action_probs)} values, expected at least 7"
+                f"Warning: Action probabilities has only {len(action_probs)} values, expected at least 10"
             )
             # Use default values if we don't have enough outputs
             house_purchase_prob = 0.5
@@ -1133,8 +1273,8 @@ class ActionNeuralBot(Bot):
                 else 0.3
             )
             unmortgage_prob = (
-                action_probs[min(7, len(action_probs) - 1)].item()
-                if len(action_probs) > 7
+                action_probs[min(10, len(action_probs) - 1)].item()
+                if len(action_probs) > 10
                 else 0.4
             )
             mortgage_prob = (

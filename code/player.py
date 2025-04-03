@@ -1,5 +1,5 @@
 from Bot import Bot, parameters
-from neural_algorithm import ActionNeuralBot
+
 from game_models import PropertyStatus, Property
 from colorama import Fore, Style, Back
 
@@ -30,7 +30,9 @@ class Player:
             self.bot = (
                 Bot(self, game=game, parameters=bot_parameters, display=False)
                 if bot_type == "default"
-                else ActionNeuralBot(self, game=game, display=False)
+                else Bot(
+                    self, game=game, parameters=bot_parameters, display=False
+                )  # ActionNeuralBot(self, game=game, display=False)
             )
             self.bot_type = bot_type
 
