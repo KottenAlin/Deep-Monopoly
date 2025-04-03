@@ -1,5 +1,5 @@
 from enum import Enum
-from code.game_models import Property, PropertyColor, PropertyStatus
+from game_models import Property, PropertyColor, PropertyStatus
 import torch
 import numpy as np
 import torch.nn as nn

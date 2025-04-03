@@ -75,11 +75,13 @@ class MonopolyGame:
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_count = game_count
+
         self.game_over = False
         self.winner = None
         
         # Initialize neural bots if there are any
         self.turn_count = 0
+        '''
         if neural_bot_count > 0:
             #print(f"{self.colors['title']}Initializing neural network models for bots...")
             for player in self.players:
@@ -90,7 +92,7 @@ class MonopolyGame:
                     #except Exception as e:
                         #print(f"{self.colors['error']}Error initializing model: {e}")
             #print(f"{self.colors['success']}All neural bot models initialized successfully!")
-    
+    '''
     def create_bots(self, bot_count, neural_bot_count , bots_parameters=[]):
         players = []
 
@@ -422,6 +424,7 @@ class MonopolyGame:
         
 
         player.bot.make_move()
+        self.turn_count += 1
         self.next_player()
     
     def decide_winner(self):
@@ -475,9 +478,7 @@ class MonopolyGame:
                 self.display_statistics() # Display statistics if player chooses to
                 input("Press enter to continue...")'''
             turns += 1
-            
-        
-            
+
         # Add at the end:
         result = {
             'turn_count': self.turn_count,

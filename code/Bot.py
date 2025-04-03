@@ -581,6 +581,10 @@ class NeuralBot(Bot):
         self.game = game
         self.display = display
         
+    def new_initialise(self, model):
+        self.model = model
+        self.epsilon = 0.3  # Exploration rate
+        
     def initialise_model(self):
         self.input_dim = len(self._get_state(self.game.board, self.game.players))  # Input dimension for the neural network
         self.hidden_dim = 64  # Hidden layer size
