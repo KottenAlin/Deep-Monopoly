@@ -697,9 +697,8 @@ class MonopolyGame:
         else:
             print(f"{self.colors['error']}Invalid set number.")
     
-    def build_house_bot(self, player):
+    def build_house_bot(self, player, property):
         ''' build house for bot '''
-        property = player.bot.decide_house_purchases()
         if property and type:
             if property and type:
                 cost = property.house_price
@@ -850,6 +849,8 @@ class MonopolyGame:
         else:
             print(f"{self.colors['bot']}{player.name} is thinking about their next move...")
             player.bot.make_move()
+            
+        print(f"{self.colors['bot']}{player.name} finished their turn. Money: {player.money}")
         self.next_player()
     
     def display_all_properties(self):
@@ -925,7 +926,7 @@ if __name__ == "__main__":
         game = MonopolyGame()
         game.play_game()
     except KeyboardInterrupt:
-        os.system('cls' if os.name == 'nt' else 'clear')
+        #os.system('cls' if os.name == 'nt' else 'clear')
         print("\nGame cancelled by user.")
         print("Monopoly game ended. Thank you for playing!")
         #print the stats for everyone

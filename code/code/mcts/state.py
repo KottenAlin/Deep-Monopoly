@@ -12,7 +12,6 @@ class ActionType(Enum):
     INITIATE_TRADE = 5
     MORTGAGE = 6
     UNMORTGAGE = 7
-    ROLL_DICE = 8
     END_TURN = 9
 
 class Action:
@@ -113,13 +112,11 @@ class State:
         game = new_state.game
         player = new_state.current_player
         
+        # Simulate dice roll
+        game.roll_dice()
         
         if action.action_type == ActionType.END_TURN:
             game.next_player()
-        
-        elif action.action_type == ActionType.ROLL_DICE:
-            # Simulate dice roll
-            game.roll_dice()
             
             # Handle landing on spaces
             space = game.board.spaces[player.position]
@@ -132,6 +129,7 @@ class State:
         elif action.action_type == ActionType.BUY_PROPERTY:
             property = action.data
             player.money -= property.price
+
             player.properties.append(property)
             property.owner = player
         
@@ -167,7 +165,56 @@ class State:
                     player.jail_turns -= 1
                     if player.jail_turns == 0:
                         player.money -= 50  # Pay fine after 3rd turn
-        
+        elif action.action_type == ActionType.TRADE:
+            # chose to accept a trade
+            trade_offer = action.data
+            # Handle accepting a trade
+            trade_property = trade_offer.get('property')
+            trade_cash = trade_offer.get('cash', 0)
+            trade_partner = trade_property.owner
+
+            # Transfer property ownership
+            trade_partner.properties.remove(trade_property)
+            player.properties.append(trade_property)
+            trade_property.owner = player
+
+            # Exchange cash
+            player.money -= trade_cash
+            trade_partner.money += trade_cash
+
+            # Update property status if needed
+            if hasattr(trade_property, 'status') and trade_property.status == PropertyStatus.MORTGAGED:
+                # Property remains mortgaged under new owner
+                pass
+
+        elif action.action_type == ActionType.INITIATE_TRADE:
+            # Initiate a trade with another player
+            property_to_trade = action.data
+            trade_partner = random.choice([p for p in self.players if p != player and not p.bankrupt])
+            
+            # Simple trade proposal - offer property and some cash
+            trade_offer = {
+                'property': property_to_trade,
+                'cash': 0  # No cash offered in this simulation
+            }
+            
+            # Execute the trade if accepted (for simplicity, assume acceptance)
+            if property_to_trade in player.properties:
+                player.properties.remove(property_to_trade)
+                trade_partner.properties.append(property_to_trade)
+                property_to_trade.owner = trade_partner
+                player.money += trade_offer['cash']
+                trade_partner.money -= trade_offer['cash']
+        elif action.action_type == ActionType.AUCTION_BID:
+            # Simulate an auction bid
+            property = action.data
+            if player.money >= property.price:
+                player.money -= property.price
+                player.properties.append(property)
+                property.owner = player
+            else:
+                # Bid too high, lose the property
+                pass        
         # Check for bankruptcy
         if player.money < 0:
             self._handle_bankruptcy(new_state, player)

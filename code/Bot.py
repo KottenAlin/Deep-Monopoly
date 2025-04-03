@@ -698,7 +698,7 @@ class Bot:
         if random.random() < self.development_focus:
             property = self.decide_house_purchases()
             if property:
-                self.game.build_house_bot(self.player)
+                self.game.build_house_bot(self.player, property)
 
         # Trading frequency based on trade willingness
         if random.random() < self.trade_willingness:
@@ -1010,7 +1010,7 @@ class NeuralBot(Bot):
         if random.random() < self.development_focus:
             property = self.decide_house_purchases()
             if property:
-                self.game.build_house_bot(self.player)
+                self.game.build_house_bot(self.player, property)
 
         # Trading frequency based on trade willingness
         if random.random() < self.trade_willingness:
@@ -1206,56 +1206,6 @@ class MCTSBot(Bot):
         self.simulation_budget = 100  # Number of simulations to run
         self.search_time = 1.0  # Maximum search time in seconds
 
-    def decide_buy_property(self, property):
-        """Use MCTS to decide whether to buy property"""
-        # Create game state and run MCTS
-        state = State(self.game)
-        mcts = MCTS(state, self.simulation_budget, self.search_time)
-        best_action = mcts.search()
-
-        if best_action and best_action.action_type == ActionType.BUY_PROPERTY:
-            # MCTS recommends buying
-            return True
-        
-        # Fall back to heuristic logic if MCTS doesn't provide a clear recommendation
-        return super().decide_buy_property(property)
-
-    def decide_house_purchases(self):
-        # Use MCTS to evaluate building houses
-        state = State(self.game)
-        mcts = MCTS(state, self.simulation_budget, self.search_time)
-        best_action = mcts.search()
-
-        if best_action and best_action.action_type == ActionType.BUILD_HOUSE:
-            # MCTS recommends building a house on this property
-            return best_action.data
-        
-        # Fall back to heuristic approach
-        return super().decide_house_purchases()
-
-    def decide_mortgage_property(self, amount_needed):
-        state = State(self.game)
-        mcts = MCTS(state, self.simulation_budget, self.search_time)
-        best_action = mcts.search()
-
-        if best_action and best_action.action_type == ActionType.MORTGAGE:
-            # Return true to signal we should mortgage the property MCTS selected
-            return True
-        
-        # Fall back to heuristic approach
-        return super().decide_mortgage_property(amount_needed)
-
-    def decide_unmortgage_property(self):
-        state = State(self.game)
-        mcts = MCTS(state, self.simulation_budget, self.search_time)
-        best_action = mcts.search()
-
-        if best_action and best_action.action_type == ActionType.UNMORTGAGE:
-            # We found a property to unmortgage via MCTS
-            return best_action.data
-        
-        # Fall back to heuristic approach
-        return super().decide_unmortgage_property()
 
     def decide_jail_strategy(self):
         state = State(self.game)
@@ -1276,42 +1226,42 @@ class MCTSBot(Bot):
             return self.decide_jail_strategy()
 
         # Run a full MCTS simulation to determine overall turn strategy
-        state = State(self.game)
-        mcts = MCTS(
-            state, self.simulation_budget * 2, self.search_time * 2
-        )  # More budget for full turn
-        best_action = mcts.search()
-
-        # Execute the best action recommended by MCTS if available
-        if best_action:
-            if best_action.action_type == ActionType.BUILD_HOUSE:
-                property = best_action.data
-                self.game.build_house_bot(self.player, property)
-            elif best_action.action_type == ActionType.MORTGAGE:
-                property = best_action.data
-                property.mortgage(self.player)
-            elif best_action.action_type == ActionType.UNMORTGAGE:
-                property = best_action.data
-                self.player.money -= property.unmortgage_cost
-                property.unmortgage()
-            # Could handle other action types as well
+        while True:
+            state = State(self.game)
+            mcts = MCTS(
+                state, self.simulation_budget * 2, self.search_time * 2
+            )  # More budget for full turn
+            best_action = mcts.search()
+            # Execute the best action recommended by MCTS if available
+            if best_action:
+                if best_action.action_type == ActionType.BUILD_HOUSE:
+                    property = best_action.data
+                    self.game.build_house_bot(self.player, property)
+                elif best_action.action_type == ActionType.MORTGAGE:
+                    property = best_action.data
+                    property.mortgage(self.player)
+                elif best_action.action_type == ActionType.UNMORTGAGE:
+                    property = best_action.data
+                    self.player.money -= property.unmortgage_cost
+                    property.unmortgage()
+                elif best_action.action_type == ActionType.INITIATE_TRADE:
+                    trade = best_action.data
+                    self.game.trade_property(self.player, trade)
+                elif best_action.action_type == ActionType.BUY_PROPERTY:
+                    property = best_action.data
+                    self.player.buy_property(property)
+                elif best_action.action_type == ActionType.AUCTION_BID:
+                    property = best_action.data
+                    current_bid = best_action.current_bid
+                    new_bid = self.decide_auction_bid(property, current_bid)
+                    if new_bid > current_bid:
+                        self.game.place_bid(self.player, property, new_bid)
+                elif best_action.action_type == ActionType.END_TURN:
+                    break
+                    
+                    
+                # Could handle other action types as well
 
         # For other decisions that MCTS might not cover, use the parent Bot logic
         # Development is prioritized based on development focus
-        if random.random() < self.development_focus:
-            property = self.decide_house_purchases()
-            if property:
-                self.game.build_house_bot(self.player, property)
 
-        # Trading frequency based on trade willingness
-        if random.random() < self.trade_willingness:
-            self.initiate_trade()
-
-        # Unmortgage based on cash reserves and property focus
-        if random.random() < self.property_focus:
-            self.decide_unmortgage_property()
-
-        # If low on money, consider mortgaging properties based on cash reserve preference
-        min_cash = 50 + (self.cash_reserve_preference * 200)
-        if self.player.money < min_cash:
-            self.decide_mortgage_property(min_cash - self.player.money)
