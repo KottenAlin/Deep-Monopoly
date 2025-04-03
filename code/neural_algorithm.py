@@ -15,10 +15,12 @@ import types  # Add this import
 
 
 # hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.01
 BATCH_SIZE = 32
 MEMORY_SIZE = 1000
-
+NUMBER_OF_GAMES = 50
+NUMBER_OF_EPOCHS = 10
+HIDDEN_SIZE = 64
 
 
 class MonopolyNeuralModel(nn.Module):
@@ -40,9 +42,11 @@ class MonopolyNeuralModel(nn.Module):
 
 
 class NeuralAlgorithm:
-    def __init__(self, learning_rate=1, memory_size=1000, batch_size=32):
+    def __init__(
+        self, learning_rate=1, memory_size=1000, batch_size=32, hidden_size=64
+    ):
         self.input_size = 124  # Update to match the actual size of your state vectors
-        self.hidden_size = 64
+        self.hidden_size = hidden_size
         self.output_size = 10  # Number of bot parameters
         self.learning_rate = learning_rate
         self.memory_size = memory_size
@@ -219,55 +223,52 @@ class NeuralAlgorithm:
             }
 
     def calculate_reward(self, game, player, starting_win_prob, ending_win_prob):
-        """Calculate reward based on game outcome and win probability change"""
-        # Base reward on win probability improvement
-        reward = ending_win_prob - starting_win_prob
+        # Make immediate actions more rewarding
+        reward = (
+            ending_win_prob - starting_win_prob
+        ) * 2.0  # Stronger immediate signal
 
-        # Big bonus for actually winning
-        if game.winner == player:
-            reward += 1.0
+        # get the monopoly count and development level
+        monopoly_count = 0
 
-        # Penalty for bankruptcy
-        if player.bankrupt:
-            reward -= 0.5
-
-        # Smaller rewards for good financial position
-        money_factor = min(player.money / 2000.0, 1.0) * 0.1
-        property_factor = min(len(player.properties) / 28.0, 1.0) * 0.1
-
-        # Building development reward
-        house_count = sum(getattr(p, "houses", 0) for p in player.properties)
-        hotel_count = sum(1 for p in player.properties if getattr(p, "hotel", False))
-        development_factor = min((house_count + hotel_count * 4) / 32.0, 1.0) * 0.1
-
-        # Monopoly set reward
+        # Calculate monopoly count
         color_counts = {}
         for prop in player.properties:
             if hasattr(prop, "color"):
-                if prop.color.name not in color_counts:
-                    color_counts[prop.color.name] = 0
-                color_counts[prop.color.name] += 1
+                if prop.color not in color_counts:
+                    color_counts[prop.color] = 0
+            color_counts[prop.color] += 1
 
         monopoly_count = 0
         for color, count in color_counts.items():
-            if (color == "BROWN" or color == "DARK_BLUE") and count == 2:
-                monopoly_count += 1
-            elif count == 3:
-                monopoly_count += 1
-            elif color == "RAILROAD" and count == 4:
-                monopoly_count += 1
-            elif color == "UTILITY" and count == 2:
-                monopoly_count += 1
+            if color == PropertyColor.BROWN or color == PropertyColor.DARK_BLUE:
+                if count == 2:
+                    monopoly_count += 1
+            elif color == PropertyColor.RAILROAD:
+                if count == 4:
+                    monopoly_count += 1
 
-        monopoly_factor = min(monopoly_count / 8.0, 1.0) * 0.2
+        money_factor = player.money / 2000.0  # Normalize money
+        property_factor = len(player.properties) / 28.0
 
-        # Combine all factors
+        house_count = sum(
+            space.houses for space in player.properties if hasattr(space, "houses")
+        )
+        hotel_count = sum(1 for space in player.properties if hasattr(space, "hotels"))
+
+        # Increase the importance of strategic achievements
+        monopoly_factor = min(monopoly_count / 8.0, 1.0) * 0.5  # More weight (was 0.2)
+        development_factor = (
+            min((house_count + hotel_count * 4) / 32.0, 1.0) * 0.3
+        )  # More weight (was 0.1)
+
+        # Combine factors with better weighting
         return (
             reward
             + money_factor
             + property_factor
-            + development_factor
-            + monopoly_factor
+            + (development_factor * 3)
+            + (monopoly_factor * 2)
         )
 
     def store_experience(self, state, parameters, reward, next_state):
@@ -282,12 +283,23 @@ class NeuralAlgorithm:
             self.memory.pop(0)
 
     def train_from_memory(self):
-        """Train neural network from experience replay memory"""
+        """Train neural network from experience replay memory with improved learning"""
         if len(self.memory) < self.batch_size:
-            return 0  # Not enough samples
+            return 0
 
-        # Sample batch
-        batch = random.sample(self.memory, self.batch_size)
+        # Sample batch with priority for high-reward experiences
+        experiences = [
+            (exp, abs(exp[2])) for exp in self.memory
+        ]  # (experience, abs_reward)
+        experiences.sort(key=lambda x: x[1], reverse=True)
+
+        # Take 80% from high-reward experiences, 20% random for exploration
+        high_reward_count = int(self.batch_size * 0.8)
+        high_reward_batch = [exp[0] for exp in experiences[: high_reward_count * 2]]
+        random_batch = random.sample(self.memory, self.batch_size - high_reward_count)
+
+        # Combine samples, with extra importance to recent high-reward experiences
+        batch = random.sample(high_reward_batch, high_reward_count) + random_batch
 
         # Prepare batch data
         states = torch.stack(
@@ -309,21 +321,21 @@ class NeuralAlgorithm:
         # Create target using reward-weighted parameters
         target = parameters.clone()
         for i in range(len(batch)):
-            # Adjust parameters based on reward (positive reward strengthens, negative weakens)
             reward_factor = rewards[i].item()
-            # Current prediction moves toward or away from actual used parameters based on reward
-            if reward_factor > 0:
-                # If positive reward, move toward the parameters that were used
-                # This keeps parameters that worked well more stable
-                target[i] = parameters[i]
-            else:
-                # If negative reward, adjust parameters away from what was used
-                # The degree of change is proportional to the negative reward
-                adjustment = -reward_factor * 0.1  # Scale the adjustment
-                # Move away from used parameters (limited to keep within 0-1 range)
-                target[i] = torch.clamp(
-                    predicted[i] + adjustment * (0.5 - parameters[i]), 0, 1
+            # Use stronger updates for highly positive/negative rewards
+            if abs(reward_factor) > 0.5:  # For significant rewards
+                target[i] = (
+                    parameters[i] if reward_factor > 0 else (1.0 - parameters[i])
                 )
+            else:
+                # Your existing code for moderate rewards
+                if reward_factor > 0:
+                    target[i] = parameters[i]
+                else:
+                    adjustment = -reward_factor * 0.2  # Increased from 0.1
+                    target[i] = torch.clamp(
+                        predicted[i] + adjustment * (0.5 - parameters[i]), 0, 1
+                    )
 
         # Calculate loss and update model
         self.optimizer.zero_grad()
@@ -332,7 +344,7 @@ class NeuralAlgorithm:
         self.optimizer.step()
 
         return loss.item()
-    
+
     def _ensure_state_size(self, state):
         """Ensure state tensor is the correct size"""
         if state.size(0) != self.input_size:
@@ -345,6 +357,8 @@ class NeuralAlgorithm:
     def run_training_games(self, num_games=20, num_epochs=5, display_progress=True):
         """Run multiple games to train the neural network"""
         all_losses = []
+
+        adaptive_epsilon = 0.3  # Start with high exploration
 
         for epoch in range(num_epochs):
             epoch_losses = []
@@ -375,6 +389,9 @@ class NeuralAlgorithm:
                     player=game.players[0], game=game, display=False
                 )
                 neural_bot.new_initialise(self.model)
+                neural_bot.epsilon = adaptive_epsilon * (
+                    1 - epoch / num_epochs
+                )  # Gradually decrease exploration
                 game.players[0].bot = neural_bot
 
                 # Play the game
@@ -425,8 +442,7 @@ class NeuralAlgorithm:
             self.rewards_history.append(avg_reward)
             self.avg_game_length.append(avg_turns)
 
-            if epoch_losses:
-                all_losses.extend(epoch_losses)
+            all_losses.extend(epoch_losses)
 
             elapsed_time = time.time() - start_time
             print(f"  Epoch {epoch+1} completed in {elapsed_time:.2f}s")
@@ -446,18 +462,28 @@ class NeuralAlgorithm:
 
             # self.save_model(f"models/neural_algorithm_model_epoch_{epoch+1}.pth")
 
+            # At the end of each epoch in run_training_games
+            if epoch < num_epochs - 1:  # Don't clear after final epoch
+                # Keep the 20% highest-reward experiences, clear the rest
+                self.memory.sort(key=lambda x: x[2], reverse=True)
+                self.memory = self.memory[: int(len(self.memory) * 0.2)]
+
+            # Update learning rate
+            self.optimizer.param_groups[0]["lr"] = self.learning_rate * (
+                0.9**epoch
+            )  # Decrease learning rate gradually
+
         # Plot training results
         self.plot_training_results(all_losses)
         self.plot_model_parameters()
-        
-        return {
+
+        results = {
             "win_rates": self.win_rates,
             "rewards": self.rewards_history,
-            "game_lengths": self.avg_game_length,
-            "final_parameters": self.get_bot_parameters(
-                torch.zeros(self.input_size, dtype=torch.float32)
-            ),
+            "rewards_history": self.rewards_history,
+            "avg_game_length": self.avg_game_length,
         }
+        return results
 
     def plot_training_results(self, losses):
         """Plot training metrics"""
@@ -498,7 +524,7 @@ class NeuralAlgorithm:
 
     def plot_model_parameters(self):
         """Plot model parameters"""
-        
+
         model = self.model.state_dict()
         # Get parameters from the model
         parameters = []
@@ -506,14 +532,14 @@ class NeuralAlgorithm:
 
         # Collect weights from each layer
         for name, param in model.items():
-            if 'weight' in name:
+            if "weight" in name:
                 weights = param.detach().numpy()
                 parameters.append(weights)
                 layer_sizes.append(weights.shape)
 
         # Create the plot
         plt.figure(figsize=(15, 10))
-        plt.suptitle('Neural Network Parameters Visualization', fontsize=16)
+        plt.suptitle("Neural Network Parameters Visualization", fontsize=16)
 
         # Calculate grid dimensions based on number of layers
         num_layers = len(parameters)
@@ -525,17 +551,17 @@ class NeuralAlgorithm:
 
         # Plot each layer's parameters
         for i, weights in enumerate(parameters):
-            plt.subplot(grid_rows, grid_cols, i+1)
-            
+            plt.subplot(grid_rows, grid_cols, i + 1)
+
             # Normalize the weights for better visualization
             weights_normalized = weights / (np.abs(weights).max() + 1e-10)
-            
+
             # Create heatmap
-            im = plt.imshow(weights_normalized, cmap='coolwarm', aspect='auto')
-            
+            im = plt.imshow(weights_normalized, cmap="coolwarm", aspect="auto")
+
             # Add colorbar
             plt.colorbar(im, fraction=0.046, pad=0.04)
-            
+
             # Add layer information
             plt.title(f"Layer {i+1} Weights\nShape: {weights.shape}")
             plt.xlabel("Input neurons")
@@ -559,20 +585,19 @@ class NeuralAlgorithm:
         x = np.arange(len(layers))
         width = 0.2
 
-        plt.bar(x - 1.5*width, means, width, label='Mean', color='green')
-        plt.bar(x - 0.5*width, stds, width, label='Std Dev', color='blue')
-        plt.bar(x + 0.5*width, mins, width, label='Min', color='red')
-        plt.bar(x + 1.5*width, maxs, width, label='Max', color='purple')
+        plt.bar(x - 1.5 * width, means, width, label="Mean", color="green")
+        plt.bar(x - 0.5 * width, stds, width, label="Std Dev", color="blue")
+        plt.bar(x + 0.5 * width, mins, width, label="Min", color="red")
+        plt.bar(x + 1.5 * width, maxs, width, label="Max", color="purple")
 
-        plt.ylabel('Value')
-        plt.title('Parameter Statistics by Layer')
+        plt.ylabel("Value")
+        plt.title("Parameter Statistics by Layer")
         plt.xticks(x, layers)
         plt.legend()
 
         plt.tight_layout()
         plt.savefig("neural_model_statistics.png")
         plt.show()
-        
 
     def save_model(self, filepath="models/neural_algorithm_model.pth"):
         """Save the trained model"""
@@ -646,7 +671,7 @@ class ActionNeuralBot(Bot):
         ]
 
         # Exploration-exploitation balance
-        self.epsilon = 0.1  # 10% random actions for exploration
+        self.epsilon = 0.2  # Increase from 0.1 to encourage more exploration
 
         # Training parameters
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
@@ -1278,7 +1303,7 @@ def main():
     print("Starting Neural Algorithm for Monopoly")
 
     # Initialize neural algorithm
-    algorithm = NeuralAlgorithm(learning_rate=0.001)
+    algorithm = NeuralAlgorithm(LEARNING_RATE, MEMORY_SIZE, BATCH_SIZE, HIDDEN_SIZE)
 
     # Try to load existing model
     model_loaded = algorithm.load_model()
@@ -1286,7 +1311,9 @@ def main():
         print("Starting with a new model")
 
     # Run training games
-    results = algorithm.run_training_games(num_games=20, num_epochs=50)
+    results = algorithm.run_training_games(
+        num_games=NUMBER_OF_GAMES, num_epochs=NUMBER_OF_EPOCHS
+    )
 
     # Save trained model
     algorithm.save_model()
