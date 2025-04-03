@@ -6,8 +6,8 @@ from enum import Enum
 import torch
 import matplotlib.pyplot as plt
 from stats import calculate_win_probabilities
-from deep_monopoly.code.mcts.state import State, Action, ActionType
-from deep_monopoly.code.mcts.mcts import MCTS
+from code.mcts.state import State, Action, ActionType
+from code.mcts.mcts import MCTS
 
 
 global parameters

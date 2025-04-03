@@ -1,4 +1,4 @@
-from Bot import Bot, NeuralBot, parameters
+from Bot import Bot, NeuralBot, parameters, MCTSNeuralBot
 from game_models import PropertyStatus, Property
 from colorama import Fore, Style, Back
 
@@ -18,7 +18,7 @@ class Player:
         self.is_bot = is_bot
         
         if is_bot:
-            self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if bot_type == 'default' else NeuralBot(self, game=game, display=False)
+            self.bot = Bot(self, game=game, parameters=bot_parameters, display=False) if bot_type == 'default' else MCTSNeuralBot(self, game=game, display=False)
             self.bot_type = bot_type
     
     
