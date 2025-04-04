@@ -27,13 +27,15 @@ class Player:
         self.is_bot = is_bot
 
         if is_bot:
-            self.bot = (
-                Bot(self, game=game, parameters=bot_parameters, display=False)
-                if bot_type == "default"
-                else Bot(
+            if bot_type == "neural":
+                # Import locally to avoid circular dependency
+                from neural_algorithm import ActionNeuralBot
+
+                self.bot = ActionNeuralBot(self, game=game, display=False)
+            else:
+                self.bot = Bot(
                     self, game=game, parameters=bot_parameters, display=False
-                )  # ActionNeuralBot(self, game=game, display=False)
-            )
+                )
             self.bot_type = bot_type
 
     def move(self, steps, board_size=40):

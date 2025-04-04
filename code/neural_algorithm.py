@@ -47,17 +47,29 @@ class MonopolyNeuralModel(nn.Module):
             x = x.unsqueeze(0)  # Add batch dimension
             add_batch_dim = True
 
+        # Initial layer
         x = torch.relu(self.input_layer(x))
-        x = self.bn1(x)
 
-        identity = x
-        x = torch.relu(self.hidden1(x))
-        x = self.bn2(x)
-        x = self.dropout(x)
-        x = x + identity  # Residual connection
-
-        x = torch.relu(self.hidden2(x))
-        x = self.dropout(x)
+        # Check if we need to use BatchNorm
+        # Skip batch norm during inference with batch size of 1
+        if x.size(0) == 1 and not self.training:
+            # Skip batch norm for single samples during evaluation
+            identity = x
+            x = torch.relu(self.hidden1(x))
+            x = self.dropout(x) if self.training else x
+            x = x + identity  # Residual connection
+            x = torch.relu(self.hidden2(x))
+            x = self.dropout(x) if self.training else x
+        else:
+            # Normal path with batch norm for training or larger batches
+            x = self.bn1(x)
+            identity = x
+            x = torch.relu(self.hidden1(x))
+            x = self.bn2(x)
+            x = self.dropout(x) if self.training else x
+            x = x + identity  # Residual connection
+            x = torch.relu(self.hidden2(x))
+            x = self.dropout(x) if self.training else x
 
         output = torch.sigmoid(self.output_layer(x))
 
@@ -285,6 +297,9 @@ class NeuralAlgorithm:
 
     def get_bot_parameters(self, state):
         """Generate bot parameters using the neural network"""
+        # Set model to eval mode to avoid batch norm issues with batch size of 1
+        self.model.eval()
+
         with torch.no_grad():
             # Ensure state is the right size
             if state.size(0) != self.input_size:
@@ -358,7 +373,7 @@ class NeuralAlgorithm:
     def calculate_dynamic_reward(self, game, player, initial_state, final_state):
         """Dynamic reward shaping based on game stage"""
         base_reward = self._calculate_reward(initial_state, final_state, player.money)
-        game_stage = min(1.0, game.turn_count / 50)  # 0 to 1 based on game progression
+        game_stage = min(1.0, game.turn_count / 300)  # 0 to 1 based on game progression
 
         if game_stage < 0.3:  # Early game: Focus on property acquisition
             property_weight = 2.0 - game_stage * 3
@@ -523,7 +538,7 @@ class NeuralAlgorithm:
                         break
 
                 # Calculate reward
-                reward = self.calculate_reward(
+                reward = self.calculate_dynamic_reward(
                     game, neural_bot_player, initial_win_prob, final_win_prob
                 )
                 total_reward += reward
@@ -765,6 +780,102 @@ class NeuralAlgorithm:
             print(f"No model found at {filepath}")
             return False
 
+    def create_model_variant(self, base_model=None, mutation_rate=0.1):
+        """Create a variant of the model with mutated parameters"""
+        if base_model is None:
+            base_model = self.model
+
+        # Create a new model with the same architecture
+        new_model = MonopolyNeuralModel(
+            self.input_size, self.hidden_size, self.output_size
+        )
+
+        # Copy weights from the base model and mutate them
+        for name, param in new_model.named_parameters():
+            if "weight" in name:
+                mutation_mask = torch.rand_like(param) < mutation_rate
+                param.data.copy_(
+                    base_model.state_dict()[name]
+                    + mutation_mask.float() * torch.randn_like(param)
+                )
+            else:
+                param.data.copy_(base_model.state_dict()[name])
+
+        return new_model
+
+    def play_head_to_head(self, model_a, model_b, num_matches=10):
+        """Play head-to-head matches between two models"""
+        wins = 0
+        for _ in range(num_matches):
+            game = MonopolyGame(
+                bot_count=4,
+                neural_bot_count=2,  # Two neural bots
+                bots_parameters=bots_parameters,
+            )
+
+            # Initialize neural bots with the given models
+            neural_bot_a = ActionNeuralBot(
+                player=game.players[0], game=game, display=False
+            )
+            neural_bot_a.new_initialise(model_a)
+            game.players[0].bot = neural_bot_a
+
+            neural_bot_b = ActionNeuralBot(
+                player=game.players[1], game=game, display=False
+            )
+            neural_bot_b.new_initialise(model_b)
+            game.players[1].bot = neural_bot_b
+
+            # Play the game
+            game_result = game.play_game()
+
+            # Check if model A won
+            if game.winner == game.players[0]:
+                wins += 1
+
+        return wins
+
+    def run_self_play_tournament(self, generations=5, matches_per_generation=20):
+        """Train models through self-play and evolution"""
+
+        # Initial model pool
+        model_pool = [self.create_model_variant() for _ in range(5)]
+
+        for gen in range(generations):
+            print(f"Generation {gen+1}/{generations}")
+
+            # Play matches between models
+            results = {}
+            for i, model_a in enumerate(model_pool):
+                results[i] = 0
+                for j, model_b in enumerate(model_pool):
+                    if i != j:
+                        # Play matches between models
+                        wins = self.play_head_to_head(
+                            model_a, model_b, matches_per_generation // 10
+                        )
+                        results[i] += wins
+
+            # Keep top models, replace worst performers
+            ranked_models = sorted(results.items(), key=lambda x: x[1], reverse=True)
+
+            # Keep top 2 models, create new variants from them
+            survivors = [model_pool[idx] for idx, _ in ranked_models[:2]]
+            new_models = []
+
+            for base_model in survivors:
+                # Create variants with parameter noise
+                for _ in range(2):
+                    variant = self.create_model_variant(base_model, mutation_rate=0.1)
+                    new_models.append(variant)
+
+            # Update the pool with survivors and new variants
+            model_pool = survivors + new_models
+
+            # Update main model with best performer
+            self.model = model_pool[ranked_models[0][0]]
+        self.save_model(f"models/neural_algorithm_model_final.pth")
+
 
 class ActionNeuralBot(Bot):
     """Neural bot that chooses actions directly using the neural network"""
@@ -824,7 +935,8 @@ class ActionNeuralBot(Bot):
             self.load_model()
             print("Pre-trained action neural bot model loaded")
         except:
-            print("No pre-trained action neural bot model found, using new model")
+            pass
+            # print("No pre-trained action neural bot model found, using new model")
 
     def _create_model(self):
         """Create neural network model"""
@@ -846,9 +958,9 @@ class ActionNeuralBot(Bot):
 
         # Extract model dimensions
         for name, param in model.named_parameters():
-            if "0.weight" in name:  # First layer weights
+            if "input_layer.weight" in name:  # First layer weights
                 input_size = param.size(1)
-            elif "4.weight" in name:  # Last layer weights in the original model
+            elif "output_layer.weight" in name:  # Last layer weights
                 output_size = param.size(0)
 
         if input_size is None or output_size is None:
@@ -904,6 +1016,9 @@ class ActionNeuralBot(Bot):
             def adapted_get_action_probabilities(self_obj):
                 state = self_obj._get_state()
                 with torch.no_grad():
+                    # Ensure model is in eval mode
+                    self_obj.external_model.eval()
+
                     # Apply input adapter if needed
                     if self_obj.input_adapter is not None:
                         adapted_state = self_obj.input_adapter(state)
@@ -1072,6 +1187,9 @@ class ActionNeuralBot(Bot):
     def _get_action_probabilities(self):
         """Get action probabilities from the neural network"""
         state = self._get_state()
+        # Always ensure the model is in eval mode for inference
+        if hasattr(self, "model"):
+            self.model.eval()
         with torch.no_grad():
             return self.model(state)
 
@@ -1449,6 +1567,14 @@ def main():
     model_loaded = algorithm.load_model()
     if not model_loaded:
         print("Starting with a new model")
+
+    # play the models against each other
+    print("Running self-play tournament...")
+    algorithm.run_self_play_tournament(
+        generations=5, matches_per_generation=20
+    )  # Adjust as needed
+
+    input("Press Enter to continue...")
 
     # Run training games
     results = algorithm.run_training_games(
