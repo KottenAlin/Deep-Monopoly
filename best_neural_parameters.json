@@ -1,0 +1,12 @@
+{
+    "risk_tolerance": 0.9989016056060791,
+    "property_focus": 0.0640096440911293,
+    "development_focus": 0.24782000482082367,
+    "cash_reserve_preference": 0.8787099719047546,
+    "trade_willingness": 0.9995220899581909,
+    "monopoly_focus": 0.20077526569366455,
+    "railroad_utility_interest": 0.00024844627478159964,
+    "property_management_focus": 0.5100536942481995,
+    "trade_acceptance_threshold": 0.03384159505367279,
+    "property_value_assessment": 0.266549676656723
+}

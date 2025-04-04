@@ -12,6 +12,7 @@ import json
 import os
 from game_models import Property, PropertyColor, PropertyStatus
 import types
+from colorama import Fore, Style, Back
 
 
 # hyperparameters
@@ -370,12 +371,16 @@ class NeuralAlgorithm:
             + (monopoly_factor * 2)
         )
 
-    def calculate_dynamic_reward(self, game, player, initial_state, final_state):
+    def calculate_dynamic_reward(self, game, player, starting_win_prob, final_win_prob):
         """Dynamic reward shaping based on game stage"""
-        base_reward = self._calculate_reward(initial_state, final_state, player.money)
-        game_stage = min(1.0, game.turn_count / 300)  # 0 to 1 based on game progression
 
-        if game_stage < 0.3:  # Early game: Focus on property acquisition
+        base_reward = self.calculate_reward(
+            game, player, starting_win_prob, final_win_prob
+        )
+        # Adjust reward based on game stage
+        """game_stage = min(1.0, game.turn_count / 300)  # 0 to 1 based on game progression
+
+        f game_stage < 0.3:  # Early game: Focus on property acquisition
             property_weight = 2.0 - game_stage * 3
             base_reward += property_weight * (
                 self.count_properties(final_state)
@@ -399,7 +404,7 @@ class NeuralAlgorithm:
             )
             base_reward += cash_weight * (player.money / 2000.0)
             base_reward += opponent_bankruptcy * 0.5
-
+"""
         return base_reward
 
     def store_experience(self, state, parameters, reward, next_state):
@@ -968,10 +973,8 @@ class ActionNeuralBot(Bot):
             input_size = self.input_dim
             output_size = 10  # NeuralAlgorithm default
 
-        print(f"External model dimensions: input={input_size}, output={output_size}")
-        print(
-            f"Bot expected dimensions: input={self.input_dim}, output={self.output_dim}"
-        )
+        # print(f"External model dimensions: input={input_size}, output={output_size}")
+        # print(f"Bot expected dimensions: input={self.input_dim}, output={self.output_dim}")
 
         # We need a more complex adapter if the output dimensions don't match
         needs_adapter = (input_size != self.input_dim) or (
@@ -1374,7 +1377,7 @@ class ActionNeuralBot(Bot):
         # Safety check - ensure action_probs has enough dimensions
         if len(action_probs) < 10:
             print(
-                f"Warning: Action probabilities has only {len(action_probs)} values, expected at least 10"
+                f"{Fore.RED}Warning: Action probabilities has only {len(action_probs)} values, expected at least 10{Style.RESET_ALL}"
             )
             # Use default values if we don't have enough outputs
             house_purchase_prob = 0.5
@@ -1558,7 +1561,19 @@ class ActionNeuralBot(Bot):
 
 def main():
     """Main function to run the neural algorithm"""
-    print("Starting Neural Algorithm for Monopoly")
+    print(
+        f"{Fore.CYAN}{Style.BRIGHT}Starting Neural Algorithm for Monopoly{Style.RESET_ALL}"
+    )
+
+    global colors
+    colors = {
+        "title": Fore.CYAN + Style.BRIGHT,
+        "prompt": Fore.YELLOW,
+        "info": Fore.WHITE,
+        "success": Fore.GREEN,
+        "error": Fore.RED,
+        "reset": Style.RESET_ALL,
+    }
 
     # Initialize neural algorithm
     algorithm = NeuralAlgorithm(LEARNING_RATE, MEMORY_SIZE, BATCH_SIZE, HIDDEN_SIZE)
@@ -1566,15 +1581,15 @@ def main():
     # Try to load existing model
     model_loaded = algorithm.load_model()
     if not model_loaded:
-        print("Starting with a new model")
+        print(f"{Fore.YELLOW}Starting with a new model{Style.RESET_ALL}")
 
     # play the models against each other
-    print("Running self-play tournament...")
+    print(f"{Fore.CYAN}Running self-play tournament...{Style.RESET_ALL}")
     algorithm.run_self_play_tournament(
         generations=5, matches_per_generation=20
     )  # Adjust as needed
 
-    input("Press Enter to continue...")
+    input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
 
     # Run training games
     results = algorithm.run_training_games(
@@ -1585,14 +1600,18 @@ def main():
     algorithm.save_model()
 
     # Display final results
-    print("\nTraining completed!")
-    print(f"Final win rate: {results['win_rates'][-1]:.2f}")
-    print(f"Final average reward: {results['rewards'][-1]:.4f}")
-    print("\nOptimal parameters found:")
+    print(f"\n{Fore.GREEN}{Style.BRIGHT}Training completed!{Style.RESET_ALL}")
+    print(
+        f"{Fore.CYAN}Final win rate: {Fore.GREEN}{results['win_rates'][-1]:.2f}{Style.RESET_ALL}"
+    )
+    print(
+        f"{Fore.CYAN}Final average reward: {Fore.GREEN}{results['rewards'][-1]:.4f}{Style.RESET_ALL}"
+    )
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}Optimal parameters found:{Style.RESET_ALL}")
     for name, value in results["final_parameters"].items():
-        print(f"  {name}: {value:.4f}")
+        print(f"  {Fore.YELLOW}{name}: {Fore.GREEN}{value:.4f}{Style.RESET_ALL}")
 
-    print("\nEvaluating final model in test games...")
+    print(f"\n{Fore.CYAN}Evaluating final model in test games...{Style.RESET_ALL}")
 
     # Run some test games with the final model
     final_params = results["final_parameters"]
@@ -1600,7 +1619,7 @@ def main():
     num_test_games = 5
 
     for i in range(num_test_games):
-        print(f"Test game {i+1}/{num_test_games}...")
+        print(f"{Fore.CYAN}Test game {i+1}/{num_test_games}...{Style.RESET_ALL}")
 
         # Create a game with neural bot
         game = MonopolyGame(
@@ -1618,11 +1637,15 @@ def main():
         game_result = game.play_game()
 
         if game_result["winner"] == game.players[0]:
-            print("Neural bot wins!")
+            print(f"{Fore.GREEN}Neural bot wins!{Style.RESET_ALL}")
             test_wins += 1
 
-    print(f"\nTest win rate: {test_wins/num_test_games:.2f}")
-    print("Neural algorithm training complete!")
+    print(
+        f"\n{Fore.CYAN}Test win rate: {Fore.GREEN}{test_wins/num_test_games:.2f}{Style.RESET_ALL}"
+    )
+    print(
+        f"{Fore.GREEN}{Style.BRIGHT}Neural algorithm training complete!{Style.RESET_ALL}"
+    )
 
 
 if __name__ == "__main__":

@@ -51,7 +51,9 @@ bots_parameters = [
 ]
 
 
+
 class MonopolyGame:
+
     def __init__(self):
         # clear screan
         os.system("cls" if os.name == "nt" else "clear")
@@ -93,22 +95,26 @@ class MonopolyGame:
             neural_bot_count = int(
                 input(
                     f"{self.colors['prompt']}Enter number of bots that are neural (default 0): {self.colors['reset']}"
-                ).strip()
-            )
+                ).strip())
+            
+            if input(f"{self.colors['info']}Select Parameters (y/n)?{self.colors['reset']}") == 'y':
+                self.select_parameters()
+                pass
             bot_count = int(bot_count_input) if bot_count_input else 2
         except ValueError:
             time.sleep(2)
             MonopolyGame()
 
         if bot_count + player_count < 2:
-            print(f"{self.colors['error']}Not enough players to start the game.")
+            print(
+                f"{self.colors['error']}Not enough players to start the game.")
             time.sleep(2)
             MonopolyGame()
 
         self.board = Board()
         self.players = self.create_players(
-            player_count, bot_count, neural_bot_count if neural_bot_count else 0
-        )
+            player_count, bot_count,
+            neural_bot_count if neural_bot_count else 0)
         self.current_player_idx = 0
         self.doubles_count = 0
         self.game_over = False
@@ -129,14 +135,31 @@ class MonopolyGame:
                             self  # Ensure the bot has a reference to the game
                         )
                         player.bot = ActionNeuralBot(
-                            player, self
-                        )  # Initialize the neural network model
-                        player.bot.load_model("models/neural_algorithm_model.pth")
+                            player,
+                            self)  # Initialize the neural network model
+                        player.bot.load_model(
+                            "models/neural_algorithm_model.pth")
                     except Exception as e:
-                        print(f"{self.colors['error']}Error initializing model: {e}")
+                        print(
+                            f"{self.colors['error']}Error initializing model: {e}"
+                        )
             input(
                 f"{self.colors['success']}All neural bot models initialized successfully!"
             )
+    def select_parameters(self):
+        print(f"{self.colors['title']}=== SELECT BOT PARAMETERS ===")
+        
+        print(f"{self.colors['info']}Enter custom parameters:")
+        for i, param in enumerate(bots_parameters):
+            print(f"{self.colors['info']}Bot {i + 1}:")
+            for key in param:
+                value = input(
+                    f"{self.colors['prompt']}{key} (default {param[key]}): {self.colors['reset']}"
+                )
+                if value:
+                    bots_parameters[i][key] = float(value)
+                else:
+                    print(f"{self.colors['info']}Using default value for {key}: {param[key]}")
 
     def create_players(self, player_count, bot_count, neural_bot_count):
         tokens = ["🎩", "🚗", "🚢", "🐕", "👞", "🎲", "🐎", "⛲"]
@@ -145,15 +168,19 @@ class MonopolyGame:
             name = input(
                 f"{self.colors['prompt']}Enter name for player {i + 1}: {self.colors['reset']}"
             )
-            token = tokens[
-                i % len(tokens)
-            ]  # Cycle through tokens if more than 8 players are playing
+            token = tokens[i % len(
+                tokens
+            )]  # Cycle through tokens if more than 8 players are playing
             players.append(Player(name, token))
         for i in range(bot_count):
             name = f"Bot {i + 1}"
             if i < neural_bot_count:
                 token = "🧠"
-                player = Player(name, token, is_bot=True, game=self, bot_type="neural")
+                player = Player(name,
+                                token,
+                                is_bot=True,
+                                game=self,
+                                bot_type="neural")
             else:
                 token = "🤖"
                 player = Player(
@@ -174,9 +201,11 @@ class MonopolyGame:
 
     def next_player(self):
         # Find next non-bankrupt player
-        self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
+        self.current_player_idx = (self.current_player_idx + 1) % len(
+            self.players)
         while self.players[self.current_player_idx].bankrupt:
-            self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
+            self.current_player_idx = (self.current_player_idx + 1) % len(
+                self.players)
 
         # Reset doubles count
         self.doubles_count = 0
@@ -192,7 +221,8 @@ class MonopolyGame:
             if hasattr(prop, "houses") and prop.houses > 0:
                 total_assets += (prop.house_price // 2) * prop.houses
             elif hasattr(prop, "hotel") and prop.hotel:
-                total_assets += (prop.house_price // 2) * 5  # Hotel is worth 5 houses
+                total_assets += (prop.house_price //
+                                 2) * 5  # Hotel is worth 5 houses
 
         if total_assets < amount_due:
             print(f"\n{self.colors['error']}{player.name} is bankrupt!")
@@ -209,10 +239,8 @@ class MonopolyGame:
                     while player.money < amount_due:
                         self.property_management(player)
                         # check if all properties are mortgaged
-                        if all(
-                            prop.status == PropertyStatus.MORTGAGED
-                            for prop in player.properties
-                        ):
+                        if all(prop.status == PropertyStatus.MORTGAGED
+                               for prop in player.properties):
                             print(
                                 f"{self.colors['error']}All properties are mortgaged!"
                             )
@@ -222,8 +250,7 @@ class MonopolyGame:
                     player.pay(amount_due)
                     return True
             elif player.bot.decide_mortgage_property(
-                amount_due
-            ):  # Can the bot mortgage property?
+                    amount_due):  # Can the bot mortgage property?
                 player.pay(amount_due)
                 return True
             else:
@@ -245,7 +272,9 @@ class MonopolyGame:
             for prop in player.properties:
                 prop.owner = recipient
                 recipient.properties.append(prop)
-                print(f"{self.colors['property']}Property transferred: {prop.name}")
+                print(
+                    f"{self.colors['property']}Property transferred: {prop.name}"
+                )
         player.money = 0
         player.properties = []
 
@@ -254,7 +283,9 @@ class MonopolyGame:
         print(f"{self.colors['info']}Active players: {len(active_players)}")
         if len(active_players) == 1:
             self.game_over = True
-            print(f"\n{self.colors['success']}{active_players[0].name} wins the game!")
+            print(
+                f"\n{self.colors['success']}{active_players[0].name} wins the game!"
+            )
 
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -298,8 +329,7 @@ class MonopolyGame:
             ).lower()
 
         if choice != "n" and player.pay(
-            property.price
-        ):  # Player declined to buy the property
+                property.price):  # Player declined to buy the property
             player.own_property(property)
             property.owner = player
             property.status = PropertyStatus.OWNED
@@ -339,7 +369,8 @@ class MonopolyGame:
                 )
 
                 if bidder.is_bot:
-                    choice = bidder.bot.decide_auction_bid(property, current_bid)
+                    choice = bidder.bot.decide_auction_bid(
+                        property, current_bid)
                     print(
                         f"{self.colors['bot']}Bot bids: ${choice if choice > current_bid else 'PASS'}"
                     )
@@ -368,7 +399,9 @@ class MonopolyGame:
                             f"{self.colors['success']}{bidder.name} bids ${current_bid}!"
                         )
                 except ValueError:
-                    print(f"{self.colors['error']}Invalid input. You pass by default.")
+                    print(
+                        f"{self.colors['error']}Invalid input. You pass by default."
+                    )
                     active_bidders.remove(bidder)
 
             # If only one bidder left, they win
@@ -400,7 +433,9 @@ class MonopolyGame:
     def handle_card(self, player, card_type):
         if card_type == "Chans":
             card = self.board.draw_Chans_card()
-            print(f"\n{self.colors['title']}Chans card: {self.colors['info']}{card}")
+            print(
+                f"\n{self.colors['title']}Chans card: {self.colors['info']}{card}"
+            )
         else:  # community chest
             card = self.board.draw_Almänning_card()
             print(
@@ -417,9 +452,8 @@ class MonopolyGame:
         elif "Go to Jail" in card:
             player.go_to_jail()
             print(f"{self.colors['jail']}{player.name} goes to jail.")
-        elif (
-            "Collect" in card or "Receive" in card or "get" in card or "matures" in card
-        ):
+        elif ("Collect" in card or "Receive" in card or "get" in card
+              or "matures" in card):
             # Extract amount
             amount = int("".join(filter(str.isdigit, card)))
             player.receive(amount)
@@ -434,7 +468,9 @@ class MonopolyGame:
                     f"{self.colors['warning']}{player.name} pays {self.colors['money']}${amount}."
                 )
             else:
-                print(f"{self.colors['error']}{player.name} doesn't have enough money!")
+                print(
+                    f"{self.colors['error']}{player.name} doesn't have enough money!"
+                )
                 self.check_bankruptcy(player, amount)
         elif "Get Out of Jail Free" in card:
             player.jail_free_cards += 1
@@ -450,9 +486,8 @@ class MonopolyGame:
         elif space_name == "Almänning":
             self.handle_card(player, "Almänning")
         elif space_name == "Inkomstskatt":
-            tax = min(
-                200, int(player.money * 0.1)
-            )  # Pay $200 or 10%, whichever is less
+            tax = min(200, int(player.money *
+                               0.1))  # Pay $200 or 10%, whichever is less
             if player.pay(tax):
                 print(
                     f"{self.colors['warning']}{player.name} pays {self.colors['money']}${tax} in Income Tax."
@@ -467,7 +502,8 @@ class MonopolyGame:
         elif space_name == "Jail / Just Visiting":
             print(f"{self.colors['info']}{player.name} is just visiting jail.")
         elif space_name == "Fri Parkering":
-            print(f"{self.colors['info']}{player.name} landed on Fri Parkering.")
+            print(
+                f"{self.colors['info']}{player.name} landed on Fri Parkering.")
         elif space_name == "Gå i fängelse":
             player.go_to_jail()
             print(f"{self.colors['jail']}{player.name} goes to jail.")
@@ -514,7 +550,9 @@ class MonopolyGame:
                     return False
             else:
                 # Roll for doubles
-                print(f"{self.colors['info']}{player.name} rolls to try for doubles...")
+                print(
+                    f"{self.colors['info']}{player.name} rolls to try for doubles..."
+                )
                 die1, die2 = self.roll_dice()
                 print(f"{self.colors['dice']}Rolled: {die1}, {die2}")
 
@@ -573,7 +611,9 @@ class MonopolyGame:
     def trade_property(self, player):
 
         # Show all other non-bankrupt players
-        available_players = [p for p in self.players if p != player and not p.bankrupt]
+        available_players = [
+            p for p in self.players if p != player and not p.bankrupt
+        ]
 
         if not available_players:
             print(f"{self.colors['info']}No players available to trade with.")
@@ -584,14 +624,10 @@ class MonopolyGame:
         for i, p in enumerate(available_players):
             print(f"{self.colors['player']}{i+1}. {p.name}")
 
-        player_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Enter player number (or 0 to cancel): {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        player_idx = (int(
+            input(
+                f"{self.colors['prompt']}Enter player number (or 0 to cancel): {self.colors['reset']}"
+            )) - 1)
         if player_idx < 0 or player_idx >= len(available_players):
             return
 
@@ -599,7 +635,9 @@ class MonopolyGame:
 
         # Show your properties
         if not player.properties:
-            print(f"{self.colors['error']}You don't have any properties to offer.")
+            print(
+                f"{self.colors['error']}You don't have any properties to offer."
+            )
             return
 
         print(f"\n{self.colors['title']}YOUR PROPERTIES TO OFFER:")
@@ -610,14 +648,10 @@ class MonopolyGame:
             )
 
         # Select property to offer
-        offer_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Select property to offer (or 0 to cancel): {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        offer_idx = (int(
+            input(
+                f"{self.colors['prompt']}Select property to offer (or 0 to cancel): {self.colors['reset']}"
+            )) - 1)
         if offer_idx < 0 or offer_idx >= len(player.properties):
             return
 
@@ -638,14 +672,10 @@ class MonopolyGame:
             )
 
         # Select property to request
-        request_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Select property to request (or 0 to cancel): {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        request_idx = (int(
+            input(
+                f"{self.colors['prompt']}Select property to request (or 0 to cancel): {self.colors['reset']}"
+            )) - 1)
         if request_idx < 0 or request_idx >= len(trade_partner.properties):
             return
 
@@ -662,8 +692,7 @@ class MonopolyGame:
             cash_amount = int(
                 input(
                     f"{self.colors['prompt']}How much will you pay? (You have {self.colors['money']}${player.money}): ${self.colors['reset']}"
-                )
-            )
+                ))
             if cash_amount > player.money:
                 print(f"{self.colors['error']}You don't have that much money.")
                 return
@@ -671,8 +700,7 @@ class MonopolyGame:
             cash_amount = -int(
                 input(
                     f"{self.colors['prompt']}How much will you request? ({trade_partner.name} has {self.colors['money']}${trade_partner.money}): ${self.colors['reset']}"
-                )
-            )
+                ))
             if -cash_amount > trade_partner.money:
                 print(
                     f"{self.colors['error']}{trade_partner.name} doesn't have that much money."
@@ -682,9 +710,9 @@ class MonopolyGame:
         # If bot, automatically decide
         if trade_partner.is_bot:
             # Simple bot logic for deciding trades
-            accept = trade_partner.bot.decide_trade(
-                request_property, offer_property, -cash_amount
-            )
+            accept = trade_partner.bot.decide_trade(request_property,
+                                                    offer_property,
+                                                    -cash_amount)
             print(f"{self.colors['bot']}Bot evaluating trade offer...")
 
             if accept:
@@ -718,7 +746,9 @@ class MonopolyGame:
                 )
         else:
             # Show trade summary to human player
-            print(f"\n{self.colors['title']}TRADE OFFER TO {trade_partner.name}:")
+            print(
+                f"\n{self.colors['title']}TRADE OFFER TO {trade_partner.name}:"
+            )
             print(
                 f"{self.colors['info']}You offer: {self.colors['property']}{offer_property.name}"
             )
@@ -728,14 +758,12 @@ class MonopolyGame:
             if cash_amount > 0:
                 print(f"{self.colors['money']}You will pay: ${cash_amount}")
             elif cash_amount < 0:
-                print(f"{self.colors['money']}You will receive: ${-cash_amount}")
+                print(
+                    f"{self.colors['money']}You will receive: ${-cash_amount}")
 
-            accept = (
-                input(
-                    f"\n{self.colors['prompt']}{trade_partner.name}, do you accept this trade? (y/n): {self.colors['reset']}"
-                ).lower()
-                != "n"
-            )
+            accept = (input(
+                f"\n{self.colors['prompt']}{trade_partner.name}, do you accept this trade? (y/n): {self.colors['reset']}"
+            ).lower() != "n")
 
             if accept:
                 # Execute the trade
@@ -755,26 +783,20 @@ class MonopolyGame:
                     trade_partner.pay(-cash_amount)
                     player.receive(-cash_amount)
 
-                print(f"\n{self.colors['success']}Trade completed successfully!")
+                print(
+                    f"\n{self.colors['success']}Trade completed successfully!")
             else:
                 print(f"\n{self.colors['error']}Trade rejected.")
 
     def mortage_property(self, player):
-        prop_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Enter property number to mortgage: {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        prop_idx = (int(
+            input(
+                f"{self.colors['prompt']}Enter property number to mortgage: {self.colors['reset']}"
+            )) - 1)
         if 0 <= prop_idx < len(player.properties):
             prop = player.properties[prop_idx]
-            if (
-                prop.status != PropertyStatus.MORTGAGED
-                and prop.houses == 0
-                and not prop.hotel
-            ):
+            if (prop.status != PropertyStatus.MORTGAGED and prop.houses == 0
+                    and not prop.hotel):
                 mortgage_value = prop.mortgage(player)
                 player.receive(mortgage_value)
                 print(
@@ -788,14 +810,10 @@ class MonopolyGame:
             print(f"{self.colors['error']}Invalid property number.")
 
     def unmortage_property(self, player):
-        prop_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Enter property number to unmortgage: {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        prop_idx = (int(
+            input(
+                f"{self.colors['prompt']}Enter property number to unmortgage: {self.colors['reset']}"
+            )) - 1)
         if 0 <= prop_idx < len(player.properties):
             prop = player.properties[prop_idx]
             if prop.status == PropertyStatus.MORTGAGED:
@@ -818,7 +836,9 @@ class MonopolyGame:
         # Group properties by color
         properties_by_color = {}
         for prop in player.properties:
-            if prop.color not in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
+            if prop.color not in [
+                    PropertyColor.RAILROAD, PropertyColor.UTILITY
+            ]:
                 if prop.color not in properties_by_color:
                     properties_by_color[prop.color] = []
                 properties_by_color[prop.color].append(prop)
@@ -826,11 +846,8 @@ class MonopolyGame:
         # Find color groups where player owns all properties
         complete_sets = {}
         for color, props in properties_by_color.items():
-            color_count = sum(
-                1
-                for p in self.board.spaces
-                if isinstance(p, Property) and p.color == color
-            )
+            color_count = sum(1 for p in self.board.spaces
+                              if isinstance(p, Property) and p.color == color)
             if len(props) == color_count:
                 complete_sets[color] = props
 
@@ -844,14 +861,10 @@ class MonopolyGame:
         for i, (color, props) in enumerate(complete_sets.items()):
             print(f"{self.colors['property']}{i+1}. {color.value}")
 
-        set_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Choose a set to build on (or 0 to cancel): {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        set_idx = (int(
+            input(
+                f"{self.colors['prompt']}Choose a set to build on (or 0 to cancel): {self.colors['reset']}"
+            )) - 1)
         if set_idx == -1:
             return
         if 0 <= set_idx < len(complete_sets):
@@ -865,23 +878,18 @@ class MonopolyGame:
                     f"\n{self.colors['title']}PROPERTIES IN {chosen_color.value} SET:"
                 )
                 for i, prop in enumerate(props):
-                    house_info = (
-                        f"{prop.houses} houses" if prop.houses > 0 else "no houses"
-                    )
+                    house_info = (f"{prop.houses} houses"
+                                  if prop.houses > 0 else "no houses")
                     hotel_info = ", has hotel" if prop.hotel else ""
                     print(
                         f"{self.colors['property']}{i+1}. {prop.name} - {house_info}{hotel_info}, house cost: {self.colors['money']}${prop.house_price}"
                     )
 
                 try:
-                    prop_idx = (
-                        int(
-                            input(
-                                f"{self.colors['prompt']}Choose a property to build on (or 0 to cancel): {self.colors['reset']}"
-                            )
-                        )
-                        - 1
-                    )
+                    prop_idx = (int(
+                        input(
+                            f"{self.colors['prompt']}Choose a property to build on (or 0 to cancel): {self.colors['reset']}"
+                        )) - 1)
                 except ValueError:
                     print(
                         f"{self.colors['error']}Invalid input. Please enter a number."
@@ -896,8 +904,8 @@ class MonopolyGame:
                     # Check if player can build evenly (difference between houses should be at most 1)
                     min_houses = min(p.houses for p in props)
                     if prop.houses > min_houses and not all(
-                        p.houses == min_houses for p in props if p != prop
-                    ):
+                            p.houses == min_houses
+                            for p in props if p != prop):
                         print(
                             f"{self.colors['error']}You must build evenly. Build on properties with fewer houses first."
                         )
@@ -969,7 +977,9 @@ class MonopolyGame:
 
     def sell_houses(self, player):
         # Find properties with houses or hotels
-        props_with_buildings = [p for p in player.properties if p.houses > 0 or p.hotel]
+        props_with_buildings = [
+            p for p in player.properties if p.houses > 0 or p.hotel
+        ]
 
         if not props_with_buildings:
             print(
@@ -988,30 +998,25 @@ class MonopolyGame:
                     f"{self.colors['property']}{i+1}. {prop.name} - {prop.houses} houses (sell value: {self.colors['money']}${prop.house_price // 2} each)"
                 )
 
-        prop_idx = (
-            int(
-                input(
-                    f"{self.colors['prompt']}Choose a property to sell buildings from (or 0 to cancel): {self.colors['reset']}"
-                )
-            )
-            - 1
-        )
+        prop_idx = (int(
+            input(
+                f"{self.colors['prompt']}Choose a property to sell buildings from (or 0 to cancel): {self.colors['reset']}"
+            )) - 1)
         if prop_idx == -1:
             return
         if 0 <= prop_idx < len(props_with_buildings):
             prop = props_with_buildings[prop_idx]
 
             # Find all properties in same color group
-            same_color_props = [p for p in player.properties if p.color == prop.color]
+            same_color_props = [
+                p for p in player.properties if p.color == prop.color
+            ]
 
             # Check if selling would create uneven distribution (difference > 1)
             if prop.hotel:
-                sell_hotel = (
-                    input(
-                        f"{self.colors['prompt']}Sell hotel? (y/n): {self.colors['reset']}"
-                    ).lower()
-                    == "y"
-                )
+                sell_hotel = (input(
+                    f"{self.colors['prompt']}Sell hotel? (y/n): {self.colors['reset']}"
+                ).lower() == "y")
                 if sell_hotel:
                     if prop.remove_hotel():
                         player.receive(prop.house_price // 2)
@@ -1024,15 +1029,12 @@ class MonopolyGame:
                 num_to_sell = int(
                     input(
                         f"{self.colors['prompt']}How many houses to sell (1-{prop.houses})? {self.colors['reset']}"
-                    )
-                )
+                    ))
                 if 1 <= num_to_sell <= prop.houses:
                     # Check if selling would violate even build rule
                     max_houses = max(p.houses for p in same_color_props)
-                    if (
-                        prop.houses == max_houses
-                        or prop.houses - num_to_sell >= max_houses - 1
-                    ):
+                    if (prop.houses == max_houses
+                            or prop.houses - num_to_sell >= max_houses - 1):
                         for _ in range(num_to_sell):
                             if prop.remove_house():
                                 player.receive(prop.house_price // 2)
@@ -1084,12 +1086,9 @@ class MonopolyGame:
                 self.property_management(player)
             elif choice == "3":
                 self.display_all_properties()
-                if (
-                    input(
+                if (input(
                         f"{self.colors['prompt']}Display statistics? (y/n) {self.colors['reset']}"
-                    )
-                    == "y"
-                ):
+                ) == "y"):
                     display_statistics(self)
                 continue
             else:
@@ -1102,7 +1101,6 @@ class MonopolyGame:
         print(
             f"\n{self.colors['player']}{player.name} rolls: {self.colors['dice']}{die1}, {die2} (Total: {dice_sum})"
         )
-
         """is_doubles = die1 == die2
         
         if is_doubles:
@@ -1178,7 +1176,8 @@ class MonopolyGame:
                 )
 
     def decide_winner(self):
-        print(f"\n{self.colors['warning']}=== GAME REACHED 500 TURNS LIMIT ===")
+        print(
+            f"\n{self.colors['warning']}=== GAME REACHED 500 TURNS LIMIT ===")
 
         # Find the player with the most money
         active_players = [p for p in self.players if not p.bankrupt]
@@ -1198,10 +1197,12 @@ class MonopolyGame:
                 player_values[p.name] = total_value
 
             print(f"\n{self.colors['title']}=== FINAL STANDINGS ===")
-            for name, value in sorted(
-                player_values.items(), key=lambda x: x[1], reverse=True
-            ):
-                print(f"{self.colors['player']}{name}: {self.colors['money']}${value}")
+            for name, value in sorted(player_values.items(),
+                                      key=lambda x: x[1],
+                                      reverse=True):
+                print(
+                    f"{self.colors['player']}{name}: {self.colors['money']}${value}"
+                )
 
             print(
                 f"\n{self.colors['success']}{winner.name} WINS THE GAME WITH {self.colors['money']}${winner.money}!"
@@ -1222,24 +1223,20 @@ class MonopolyGame:
                 self.decide_winner()
 
             if turns % 100 == 0 and turns != 0:
-                if (
-                    input(
+                if (input(
                         f"{self.colors['prompt']}Display statistics? (y/n): {self.colors['reset']}"
-                    ).lower()
-                    == "y"
-                ):
-                    display_statistics(self)  # Display statistics if player chooses to
+                ).lower() == "y"):
+                    display_statistics(
+                        self)  # Display statistics if player chooses to
             turns += 1
             # time.sleep(1)  # Small pause between turns
 
-        if (
-            input(
+        if (input(
                 f"{self.colors['prompt']}Display statistics? (y/n): {self.colors['reset']}"
-            ).lower()
-            == "y"
-        ):
+        ).lower() == "y"):
             display_statistics(self)
 
+    
 
 # Run the game
 if __name__ == "__main__":

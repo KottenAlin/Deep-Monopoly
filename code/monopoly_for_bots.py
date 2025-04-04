@@ -24,6 +24,18 @@ game_stats = {
     "bankrupt_count": {},  # Will track number of bankruptcies per player
     "turns": {},
     "game_over_500_turns": 0,
+    # New detailed statistics
+    "avg_houses_per_player": {},  # Average houses owned by each player
+    "avg_hotels_per_player": {},  # Average hotels owned by each player
+    "monopolies_owned": {},       # Count of color monopolies owned by each player
+    "avg_rent_collected": {},     # Average rent collected by each player
+    "total_rent_collected": {},   # Total rent collected by each player
+    "property_acquisitions": {},  # Number of properties acquired by each player
+    "trades_made": {},            # Number of trades made by each player
+    "trades_accepted": {},        # Number of trade offers accepted
+    "trades_rejected": {},        # Number of trade offers rejected
+    "most_valuable_property": {}, # Most valuable property (highest rent) for each player
+    "most_owned_property_type": {}, # Most frequently owned property type/color
 }
 
 colors = {
@@ -82,7 +94,9 @@ class MonopolyGame:
     ):
 
         if bot_count < 2:
-            print(f"{colors['error']}Not enough players to start the game.{colors['reset']}")
+            print(
+                f"{colors['error']}Not enough players to start the game.{colors['reset']}"
+            )
             self.game_over = True
 
         self.board = Board()
@@ -197,9 +211,12 @@ class MonopolyGame:
         if len(active_players) == 1:
             self.game_over = True
             self.winner = active_players[0]
-            print(f"{colors['success']}{self.winner.name} wins the game!{colors['reset']}")
+            print(
+                f"{colors['success']}{self.winner.name} wins the game!{colors['reset']}"
+            )
             if game_stats["wins_by_player"]:
                 game_stats["wins_by_player"][active_players[0].name] += 1
+                game_stats["turns"][self.winner.name] = self.turn_count
 
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -212,10 +229,21 @@ class MonopolyGame:
 
             if player.pay(rent):
                 property.owner.receive(rent)
+                # Track rent collection statistics
+                if game_stats["total_rent_collected"]:
+                    game_stats["total_rent_collected"][property.owner.name] += rent
+                
+                # Track property value statistics
+                if game_stats["most_valuable_property"] and property.owner.name in game_stats["most_valuable_property"]:
+                    if rent > game_stats["most_valuable_property"][property.owner.name]["rent"]:
+                        game_stats["most_valuable_property"][property.owner.name] = {
+                            "name": property.name,
+                            "rent": rent
+                        }
+                
                 # print(f"{colors['info']}{player.name} pays ${rent} to {property.owner.name}.{colors['reset']}")
             else:
                 # print(f"{colors['error']}{player.name} doesn't have enough money to pay the rent!{colors['reset']}")
-
                 self.check_bankruptcy(player, rent, property.owner)
 
     def offer_property_purchase(self, player, property):
@@ -482,10 +510,15 @@ class MonopolyGame:
             for name, value in sorted(player_values.items(), key=lambda x: x[1], reverse=True):
                 print(f"{colors['info']}{name}: ${value}{colors['reset']}")"""
 
-            print(f"{colors['title']}\n=== GAME REACHED TURN LIMIT ==={colors['reset']}")
-            print(f"{colors['success']}{self.winner.name} WINS THE GAME WITH ${self.winner.money}!{colors['reset']}")
+            print(
+                f"{colors['title']}\n=== GAME REACHED TURN LIMIT ==={colors['reset']}"
+            )
+            print(
+                f"{colors['success']}{self.winner.name} WINS THE GAME WITH ${self.winner.money}!{colors['reset']}"
+            )
             if game_stats["wins_by_player"]:
                 game_stats["wins_by_player"][self.winner.name] += 1
+                game_stats["game_over_500_turns"] += 1
             self.game_over = True
             return
 
@@ -508,7 +541,8 @@ class MonopolyGame:
             if turns % 100 == 0 and turns != 0:
                 """input(f"{colors['prompt']}Display statistics? (y/n): {colors['reset']}").lower()
                 self.display_statistics() # Display statistics if player chooses to
-                input(f"{colors['prompt']}Press enter to continue...{colors['reset']}")"""
+                input(f"{colors['prompt']}Press enter to continue...{colors['reset']}")
+                """
             turns += 1
 
         # Add at the end:
@@ -525,7 +559,9 @@ class MonopolyGame:
 
     def display_statistics(self):
         # Display a comprehensive property and building report
-        print(f"{colors['title']}\n=== PROPERTY AND BUILDING REPORT ==={colors['reset']}")
+        print(
+            f"{colors['title']}\n=== PROPERTY AND BUILDING REPORT ==={colors['reset']}"
+        )
         active_players = [p for p in self.players if not p.bankrupt]
 
         # Count total houses and hotels on the board
@@ -538,7 +574,9 @@ class MonopolyGame:
                 if hasattr(space, "hotel") and space.hotel:
                     total_hotels += 1
 
-        print(f"{colors['info']}Total buildings on board: {total_houses} houses, {total_hotels} hotels{colors['reset']}")
+        print(
+            f"{colors['info']}Total buildings on board: {total_houses} houses, {total_hotels} hotels{colors['reset']}"
+        )
 
         # Display all properties grouped by color
         color_groups = {}
@@ -599,13 +637,17 @@ class MonopolyGame:
 def display_statistics():
     # print overall statistics
     print(f"{colors['title']}\n===== OVERALL GAME STATISTICS ====={colors['reset']}")
-    print(f"{colors['info']}Total games played: {game_stats['games_played']}{colors['reset']}")
+    print(
+        f"{colors['info']}Total games played: {game_stats['games_played']}{colors['reset']}"
+    )
     print(f"{colors['info']}\nWins by player:{colors['reset']}")
     for player, wins in game_stats["wins_by_player"].items():
         player_index = (
             int(player.split()[1]) - 1
         )  # Extract the bot number from name and adjust to 0-based index
-        print(f"{colors['success']}{player}: {wins} wins ({(wins/game_stats['games_played'])*100:.1f}%){colors['reset']}")
+        print(
+            f"{colors['success']}{player}: {wins} wins ({(wins/game_stats['games_played'])*100:.1f}%){colors['reset']}"
+        )
 
     print(f"{colors['info']}\nBankruptcy rate:{colors['reset']}")
     for player, count in game_stats["bankrupt_count"].items():
@@ -625,23 +667,63 @@ def display_statistics():
         for key, value in parameters.items():
             print(f"{colors['info']}{key}: {value:.2f}{colors['reset']}")
 
+def select_parameters(self):
+    print(f"{self.colors['title']}=== SELECT BOT PARAMETERS ===")
+
+    print(f"{self.colors['info']}Enter custom parameters:")
+    for i, param in enumerate(bots_parameters):
+        print(f"{self.colors['info']}Bot {i + 1}:")
+        for key in param:
+            value = input(
+                f"{self.colors['prompt']}{key} (default {param[key]}): {self.colors['reset']}"
+            )
+            if value:
+                bots_parameters[i][key] = float(value)
+            else:
+                print(f"{self.colors['info']}Using default value for {key}: {param[key]}")
 
 def main():
     # Global variable to track game statistics
     global game_stats
 
-    bot_count = int(input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}"))
-    neural_bot_count = int(input(f"{colors['prompt']}how many should be neural bots? (0-{bot_count}): {colors['reset']}"))
+    bot_count = int(
+        input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}")
+    )
+    if input(f"{colors['prompt']}Use custom parameters? (y/n): {colors['reset']}").lower() == "y":
+        select_parameters()
+    
+    neural_bot_count = int(
+        input(
+            f"{colors['prompt']}how many should be neural bots? (0-{bot_count}): {colors['reset']}"
+        )
+    )
 
     if bot_count < 2 or bot_count > 8:
-        print(f"{colors['error']}Invalid number of bots. Please enter a number between 0 and 8.{colors['reset']}")
+        print(
+            f"{colors['error']}Invalid number of bots. Please enter a number between 0 and 8.{colors['reset']}"
+        )
         return
 
+    # Initialize all statistics for each bot
     for i in range(bot_count):
-        game_stats["wins_by_player"][f"Bot {i+1}"] = 0  # Initialize wins for each bot
-        game_stats["bankrupt_count"][
-            f"Bot {i+1}"
-        ] = 0  # Initialize bankrupt count for each bot
+        bot_name = f"Bot {i+1}"
+        # Basic stats
+        game_stats["wins_by_player"][bot_name] = 0
+        game_stats["bankrupt_count"][bot_name] = 0
+        game_stats["turns"][bot_name] = 0
+        
+        # Advanced stats
+        game_stats["avg_houses_per_player"][bot_name] = 0
+        game_stats["avg_hotels_per_player"][bot_name] = 0
+        game_stats["monopolies_owned"][bot_name] = 0
+        game_stats["avg_rent_collected"][bot_name] = 0
+        game_stats["total_rent_collected"][bot_name] = 0
+        game_stats["property_acquisitions"][bot_name] = 0
+        game_stats["trades_made"][bot_name] = 0
+        game_stats["trades_accepted"][bot_name] = 0
+        game_stats["trades_rejected"][bot_name] = 0
+        game_stats["most_valuable_property"][bot_name] = {"name": "None", "rent": 0}
+        game_stats["most_owned_property_type"][bot_name] = {}
 
     for i in range(num_games):  # play 100 games
         print(f"{colors['info']}Game {i+1} of 100{colors['reset']}")
@@ -668,5 +750,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         os.system("cls" if os.name == "nt" else "clear")
         print(f"{colors['error']}\nGame cancelled by user.{colors['reset']}")
-        print(f"{colors['title']}Monopoly game ended. Thank you for playing!{colors['reset']}")
+        print(
+            f"{colors['title']}Monopoly game ended. Thank you for playing!{colors['reset']}"
+        )
         ##print the stats for everyone
