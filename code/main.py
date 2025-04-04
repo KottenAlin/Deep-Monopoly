@@ -42,7 +42,7 @@ def main():
         elif choice == '4':
             # Display game statistics
             print(f"{colors['title']}===== GAME STATISTICS =====")
-            stats.display_statistics()
+            print(f"{colors['error']} Statistics are not available yet.")
         
         elif choice == '5' or choice == 'exit':
             print(f"{colors['success']}Thank you for playing Monopoly!")

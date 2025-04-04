@@ -9,6 +9,7 @@ from game_models import Property, PropertyStatus
 from board import Board
 from player import Player
 from colorama import init, Fore, Style
+from stats import display_statistics, display_game_statistics
 
 # Initialize colorama
 init()
@@ -251,7 +252,6 @@ class MonopolyGame:
         # print(f"{colors['prompt']}Price: ${property.price}{colors['reset']}")
 
         # check if player is bot
-
         if player.is_bot:
             choice = "y" if player.bot.decide_buy_property(property) else "n"
 
@@ -259,9 +259,21 @@ class MonopolyGame:
             player.own_property(property)
             property.owner = player
             property.status = PropertyStatus.OWNED
+            
+            # Track property acquisition statistics
+            if game_stats["property_acquisitions"]:
+                game_stats["property_acquisitions"][player.name] += 1
+                
+            # Track property types owned
+            if game_stats["most_owned_property_type"] and player.name in game_stats["most_owned_property_type"]:
+                property_color = property.color.value if hasattr(property, "color") else "Special"
+                if property_color in game_stats["most_owned_property_type"][player.name]:
+                    game_stats["most_owned_property_type"][player.name][property_color] += 1
+                else:
+                    game_stats["most_owned_property_type"][player.name][property_color] = 1
+            
             # print(f"{colors['success']}{player.name} now owns {property.name}!{colors['reset']}")
         else:
-
             # print(f"{colors['info']}{player.name} property is put up on action {property.name}.{colors['reset']}")
             self.handel_auction(property)
 
@@ -441,6 +453,14 @@ class MonopolyGame:
                 if player.pay(cost):
                     # print(f"{colors['success']}Added a house/hotel to {property.name}!{colors['reset']}")
                     property.add_house_or_hotel()
+                    
+                    # Track house/hotel statistics
+                    if hasattr(property, "houses") and property.houses > 0:
+                        game_stats["avg_houses_per_player"][player.name] += 1
+                    if hasattr(property, "hotel") and property.hotel:
+                        game_stats["avg_hotels_per_player"][player.name] += 1
+                        # Subtract houses when converting to hotel (typically 4 houses become 1 hotel)
+                        game_stats["avg_houses_per_player"][player.name] -= 4
                 # Check if property already has a hotel
                 else:
                     # print(f"{colors['error']}Not enough money to buy a {type} (${cost}).{colors['reset']}")
@@ -478,6 +498,9 @@ class MonopolyGame:
         else:
             self.handle_special_space(player, space)
 
+        # Check for monopolies after property acquisition
+        self.check_monopolies(player)
+
         # Check if game is over due to bankruptcy
         if self.game_over:
             return
@@ -485,6 +508,36 @@ class MonopolyGame:
         player.bot.make_move()
         self.turn_count += 1
         self.next_player()
+        
+    def check_monopolies(self, player):
+        """Check if player has acquired any new monopolies and update statistics"""
+        # Group properties by color
+        color_groups = {}
+        for prop in player.properties:
+            if hasattr(prop, "color"):
+                if prop.color not in color_groups:
+                    color_groups[prop.color] = []
+                color_groups[prop.color].append(prop)
+        
+        # Check each color group
+        monopoly_count = 0
+        for color, properties in color_groups.items():
+            # Get total properties of this color on the board
+            total_in_color = 0
+            for space in self.board.spaces:
+                if isinstance(space, Property) and hasattr(space, "color") and space.color == color:
+                    total_in_color += 1
+            
+            # Check if player owns all properties of this color
+            if len(properties) == total_in_color:
+                monopoly_count += 1
+        
+        # Update monopoly statistics
+        if monopoly_count > 0 and player.name in game_stats["monopolies_owned"]:
+            # Track the maximum number of monopolies this player has had
+            current_monopolies = game_stats["monopolies_owned"][player.name]
+            if monopoly_count > current_monopolies:
+                game_stats["monopolies_owned"][player.name] = monopoly_count
 
     def decide_winner(self):
         # print(f"{colors['title']}\n=== GAME REACHED 500 TURNS LIMIT ==={colors['reset']}")
@@ -540,7 +593,7 @@ class MonopolyGame:
 
             if turns % 100 == 0 and turns != 0:
                 """input(f"{colors['prompt']}Display statistics? (y/n): {colors['reset']}").lower()
-                self.display_statistics() # Display statistics if player chooses to
+                display_statistics(self) # Display statistics if player chooses to
                 input(f"{colors['prompt']}Press enter to continue...{colors['reset']}")
                 """
             turns += 1
@@ -555,9 +608,9 @@ class MonopolyGame:
         return result
 
         # input(f"{colors['prompt']}display statistics... {colors['reset']}")
-        # self.display_statistics()
+        # display_statistics(self)
 
-    def display_statistics(self):
+
         # Display a comprehensive property and building report
         print(
             f"{colors['title']}\n=== PROPERTY AND BUILDING REPORT ==={colors['reset']}"
@@ -634,39 +687,6 @@ class MonopolyGame:
                 print(f"{colors['error']}{player.name} is bankrupt.{colors['reset']}")
 
 
-def display_statistics():
-    # print overall statistics
-    print(f"{colors['title']}\n===== OVERALL GAME STATISTICS ====={colors['reset']}")
-    print(
-        f"{colors['info']}Total games played: {game_stats['games_played']}{colors['reset']}"
-    )
-    print(f"{colors['info']}\nWins by player:{colors['reset']}")
-    for player, wins in game_stats["wins_by_player"].items():
-        player_index = (
-            int(player.split()[1]) - 1
-        )  # Extract the bot number from name and adjust to 0-based index
-        print(
-            f"{colors['success']}{player}: {wins} wins ({(wins/game_stats['games_played'])*100:.1f}%){colors['reset']}"
-        )
-
-    print(f"{colors['info']}\nBankruptcy rate:{colors['reset']}")
-    for player, count in game_stats["bankrupt_count"].items():
-        print(
-            f"{colors['error']}{player}: {count} bankruptcies ({(count/game_stats['games_played'])*100:.1f}%){colors['reset']}"
-        )
-
-    print(
-        f"{colors['info']}\nGames that reached 500 turns: {game_stats['game_over_500_turns']} ({(game_stats['game_over_500_turns']/game_stats['games_played'])*100:.1f}%){colors['reset']}"
-    )
-
-    # display bot parameters
-    print(f"{colors['title']}\nPLAYER PARAMETERS{colors['reset']}")
-    print(f"{colors['title']}==================================={colors['reset']}")
-    for i, parameters in enumerate(bots_parameters):
-        print(f"{colors['prompt']}BOT {i+1} PARAMETERS:{colors['reset']}")
-        for key, value in parameters.items():
-            print(f"{colors['info']}{key}: {value:.2f}{colors['reset']}")
-
 def select_parameters(self):
     print(f"{self.colors['title']}=== SELECT BOT PARAMETERS ===")
 
@@ -738,7 +758,7 @@ def main():
         game_stats["games_played"] += 1
 
     # save_game_history()
-    display_statistics()
+    display_game_statistics(game_stats, colors)
 
     print(f"{colors['title']}\nGame over!{colors['reset']}")
 

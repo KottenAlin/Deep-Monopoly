@@ -449,6 +449,202 @@ def display_win_probabilities(game, player_evaluations, game_progress, game_phas
             print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
 
 
+def display_game_statistics(game_stats, colors):
+    # Print overall statistics with improved color and layout
+    print(f"{colors['title']}\n===== OVERALL GAME STATISTICS ====={colors['reset']}")
+    print(f"{colors['info']}Total games played: {colors['success']}{game_stats['games_played']}{colors['reset']}")
+    
+    # Calculate average number of turns across all games
+    total_turns = sum(game_stats["turns"].values())
+    avg_turns = total_turns / max(1, game_stats["games_played"])
+    print(f"{colors['info']}Average game length: {colors['success']}{avg_turns:.1f} turns{colors['reset']}")
+    
+    # Wins section with percentage bar visualization
+    print(f"\n{colors['title']}===== PLAYER PERFORMANCE ====={colors['reset']}")
+    print(f"{colors['info']}Wins by player:{colors['reset']}")
+    
+    # Find max wins for scaling
+    max_wins = max(game_stats["wins_by_player"].values()) if game_stats["wins_by_player"] else 1
+    
+    for player, wins in game_stats["wins_by_player"].items():
+        win_percentage = (wins/game_stats['games_played'])*100
+        # Create a visual bar based on win percentage
+        bar_length = int(win_percentage / 5)  # Scale to make bars reasonable length
+        visual_bar = "█" * bar_length
+        
+        print(
+            f"{colors['success']}{player}: {wins} wins ({win_percentage:.1f}%) {colors['prompt']}{visual_bar}{colors['reset']}"
+        )
+
+    # Bankruptcy section with visualization
+    print(f"\n{colors['info']}Bankruptcy rate:{colors['reset']}")
+    for player, count in game_stats["bankrupt_count"].items():
+        bankruptcy_percentage = (count/game_stats['games_played'])*100
+        bar_length = int(bankruptcy_percentage / 5)
+        visual_bar = "█" * bar_length
+        
+        print(
+            f"{colors['error']}{player}: {count} bankruptcies ({bankruptcy_percentage:.1f}%) {colors['prompt']}{visual_bar}{colors['reset']}"
+        )
+
+    print(
+        f"\n{colors['info']}Games that reached 500 turns: {colors['success']}{game_stats['game_over_500_turns']} ({(game_stats['game_over_500_turns']/game_stats['games_played'])*100:.1f}%){colors['reset']}"
+    )
+    
+    # Display new detailed statistics with improved visuals
+    print(f"\n{colors['title']}===== DETAILED PLAYER STATISTICS ====={colors['reset']}")
+    
+    # Property acquisition stats with comparative analysis
+    print(f"\n{colors['title']}PROPERTY OWNERSHIP ANALYSIS{colors['reset']}")
+    if game_stats["property_acquisitions"]:
+        max_properties = max(game_stats["property_acquisitions"].values())
+        
+        print(f"{colors['info']}Property Acquisitions (average per game):{colors['reset']}")
+        for player, count in game_stats["property_acquisitions"].items():
+            if game_stats["games_played"] > 0:
+                avg_per_game = count / game_stats["games_played"]
+                bar_length = int((count / max_properties) * 20)  # Scale to max 20 chars
+                visual_bar = "■" * bar_length
+                
+                print(f"{colors['info']}{player}: {count} total ({avg_per_game:.1f} per game) {colors['success']}{visual_bar}{colors['reset']}")
+    
+    # Monopoly stats with visualization
+    print(f"\n{colors['title']}MONOPOLY CONTROL{colors['reset']}")
+    if game_stats["monopolies_owned"]:
+        max_monopolies = max(game_stats["monopolies_owned"].values())
+        
+        for player in game_stats["monopolies_owned"]:
+            monopoly_count = game_stats["monopolies_owned"][player]
+            if max_monopolies > 0:
+                bar_length = int((monopoly_count / max_monopolies) * 15)
+                visual_bar = "■" * bar_length
+                
+                print(f"{colors['success']}{player}: {monopoly_count} monopolies {colors['prompt']}{visual_bar}{colors['reset']}")
+    
+    # House and Hotel stats with combined visualization
+    print(f"\n{colors['title']}PROPERTY DEVELOPMENT{colors['reset']}")
+    print(f"{colors['info']}House and Hotel Development:{colors['reset']}")
+    for player in game_stats["avg_houses_per_player"]:
+        avg_houses = game_stats["avg_houses_per_player"][player] / max(1, game_stats["games_played"])
+        avg_hotels = game_stats["avg_hotels_per_player"][player] / max(1, game_stats["games_played"])
+        
+        # House visual
+        house_bar = "🏠" * min(10, int(avg_houses))
+        if avg_houses > 10:
+            house_bar += f"+{int(avg_houses)-10}"
+            
+        # Hotel visual    
+        hotel_bar = "🏨" * min(5, int(avg_hotels))
+        if avg_hotels > 5:
+            hotel_bar += f"+{int(avg_hotels)-5}"
+            
+        print(f"{colors['info']}{player}:{colors['reset']}")
+        print(f"{colors['success']}  Houses: {avg_houses:.1f}/game {house_bar}{colors['reset']}")
+        print(f"{colors['prompt']}  Hotels: {avg_hotels:.1f}/game {hotel_bar}{colors['reset']}")
+    
+    # Rent collection stats with financial performance indicator
+    print(f"\n{colors['title']}FINANCIAL PERFORMANCE{colors['reset']}")
+    print(f"{colors['info']}Rent Collection:{colors['reset']}")
+    
+    if game_stats["total_rent_collected"]:
+        max_rent = max(game_stats["total_rent_collected"].values())
+        
+        for player in game_stats["total_rent_collected"]:
+            total_rent = game_stats["total_rent_collected"][player]
+            if game_stats["games_played"] > 0:
+                avg_rent = total_rent / game_stats["games_played"]
+                
+                # Create a visual financial indicator
+                rent_ratio = total_rent / max(1, max_rent)
+                if rent_ratio > 0.7:
+                    financial_indicator = f"{colors['success']}★★★{colors['reset']}"  # High performer
+                elif rent_ratio > 0.4:
+                    financial_indicator = f"{colors['prompt']}★★{colors['reset']}"     # Medium performer
+                else:
+                    financial_indicator = f"{colors['error']}★{colors['reset']}"       # Low performer
+                
+                print(f"{colors['info']}{player}: ${total_rent} total (${avg_rent:.1f} per game) {financial_indicator}{colors['reset']}")
+    
+    # Most valuable properties with better visualization
+    print(f"\n{colors['title']}HIGH-VALUE PROPERTIES{colors['reset']}")
+    print(f"{colors['info']}Most Valuable Properties (highest rent):{colors['reset']}")
+    for player in game_stats["most_valuable_property"]:
+        prop_data = game_stats["most_valuable_property"][player]
+        if prop_data["name"] != "None":
+            # Add value indicator based on rent amount
+            if prop_data["rent"] > 200:
+                value_indicator = f"{colors['success']}[PREMIUM]{colors['reset']}"
+            elif prop_data["rent"] > 100:
+                value_indicator = f"{colors['prompt']}[HIGH]{colors['reset']}"
+            else:
+                value_indicator = f"{colors['info']}[STANDARD]{colors['reset']}"
+                
+            print(f"{colors['info']}{player}: {prop_data['name']} (${prop_data['rent']} rent) {value_indicator}{colors['reset']}")
+    
+    # Trading activity with detailed stats
+    print(f"\n{colors['title']}TRADING BEHAVIOR{colors['reset']}")
+    print(f"{colors['info']}Trading Activity:{colors['reset']}")
+    for player in game_stats["trades_made"]:
+        trades = game_stats["trades_made"][player]
+        accepted = game_stats["trades_accepted"][player]
+        rejected = game_stats["trades_rejected"][player]
+        
+        if trades > 0:
+            acceptance_rate = (accepted / trades) * 100
+            # Trading style indicator
+            if trades > (game_stats["games_played"] * 2):
+                style = f"{colors['prompt']}[AGGRESSIVE TRADER]{colors['reset']}"
+            elif trades > game_stats["games_played"]:
+                style = f"{colors['success']}[ACTIVE TRADER]{colors['reset']}"
+            else:
+                style = f"{colors['info']}[CAUTIOUS TRADER]{colors['reset']}"
+                
+            print(f"{colors['info']}{player}: {trades} trades offered, {accepted} accepted ({acceptance_rate:.1f}%) {style}{colors['reset']}")
+    
+    # Property type preferences with visual representation
+    print(f"\n{colors['title']}PROPERTY TYPE PREFERENCES{colors['reset']}")
+    for player in game_stats["most_owned_property_type"]:
+        if game_stats["most_owned_property_type"][player]:
+            # Sort property types by frequency
+            sorted_types = sorted(
+                game_stats["most_owned_property_type"][player].items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )
+            
+            # Get top 3 property types
+            top_types = sorted_types[:3]
+            
+            print(f"{colors['info']}{player} prefers:{colors['reset']}")
+            for i, (prop_type, count) in enumerate(top_types):
+                # Use different colors for different rankings
+                if i == 0:
+                    rank_color = colors['success']
+                elif i == 1:
+                    rank_color = colors['prompt']
+                else:
+                    rank_color = colors['info']
+                    
+                print(f"  {rank_color}{i+1}. {prop_type} properties ({count} owned){colors['reset']}")
+    
+    # Display bot parameters with improved formatting
+    print(f"\n{colors['title']}===== PLAYER PARAMETERS ====={colors['reset']}")
+    print(f"{colors['title']}==================================={colors['reset']}")
+    
+    for i, parameters in enumerate(bots_parameters):
+        print(f"{colors['prompt']}BOT {i+1} PARAMETERS:{colors['reset']}")
+        
+        for key, value in parameters.items():
+            # Color-code parameter values based on their magnitude
+            if value > 0.7:
+                param_color = colors['success']  # High values in green
+            elif value > 0.3:
+                param_color = colors['prompt']   # Medium values in yellow
+            else:
+                param_color = colors['error']    # Low values in red
+                
+            print(f"  {colors['info']}{key}: {param_color}{value:.2f}{colors['reset']}")
+
 
 def main():
     print("Training completed for all game histories.")
