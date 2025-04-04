@@ -6,11 +6,15 @@ import torch.nn as nn
 import torch.optim as optim
 import pickle
 
+from variables import colors, bots_parameters
+
+
+
 game_history = [[]]
 
 def display_statistics(game):
     # Display a comprehensive property and building report
-    print(f"\n{game.colors['title']}=== PROPERTY AND BUILDING REPORT ===")
+    print(f"\n{colors['title']}=== PROPERTY AND BUILDING REPORT ===")
     active_players = [p for p in game.players if not p.bankrupt]
 
     # Count total houses and hotels on the board
@@ -23,7 +27,7 @@ def display_statistics(game):
             if hasattr(space, 'hotel') and space.hotel:
                 total_hotels += 1
 
-    print(f"{game.colors['info']}Total buildings on board: {game.colors['success']}{total_houses} houses, {total_hotels} hotels")
+    print(f"{colors['info']}Total buildings on board: {colors['success']}{total_houses} houses, {total_hotels} hotels")
 
     # Display all properties grouped by color
     color_groups = {}
@@ -35,49 +39,51 @@ def display_statistics(game):
 
     # Print properties by color group
     for color, properties in color_groups.items():
-        print(f"\n{game.colors['title']}{color.value} Properties:")
+        print(f"\n{colors['title']}{color.value} Properties:")
         for prop in properties:
-            owner_info = f"Owned by {game.colors['player']}{prop.owner.name}" if prop.owner else f"{game.colors['info']}Unowned"
-            status_info = f" ({game.colors['warning']}Mortgaged{game.colors['reset']})" if prop.status == PropertyStatus.MORTGAGED else ""
+            owner_info = f"Owned by {colors['player']}{prop.owner.name}" if prop.owner else f"{colors['info']}Unowned"
+            status_info = f" ({colors['warning']}Mortgaged{colors['reset']})" if prop.status == PropertyStatus.MORTGAGED else ""
             
             building_info = ""
             if hasattr(prop, 'houses') and prop.houses > 0:
                 building_info = f", {prop.houses} houses"
             if hasattr(prop, 'hotel') and prop.hotel:
-                building_info = f", {game.colors['success']}Hotel"
+                building_info = f", {colors['success']}Hotel"
                 
-            rent_info = f", Current rent: {game.colors['rent']}${prop.calculate_rent()}" if prop.owner else ""
-            print(f"{game.colors['property']}  {prop.name} - {game.colors['money']}${prop.price} - {owner_info}{status_info}{building_info}{rent_info}")
+            rent_info = f", Current rent: {colors['rent']}${prop.calculate_rent()}" if prop.owner else ""
+            print(f"{colors['property']}  {prop.name} - {colors['money']}${prop.price} - {owner_info}{status_info}{building_info}{rent_info}")
 
     # Print player property summaries
-    print(f"\n{game.colors['title']}Player Property Summaries:")
+    print(f"\n{colors['title']}Player Property Summaries:")
     for player in active_players:
         property_count = len(player.properties)
         house_count = sum(p.houses for p in player.properties if hasattr(p, 'houses'))
         hotel_count = sum(1 for p in player.properties if hasattr(p, 'hotel') and p.hotel)
         mortgaged_count = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
         
-        print(f"{game.colors['player']}{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged, {game.colors['money']}${player.money}")
+        print(f"{colors['player']}{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged, {colors['money']}${player.money}")
 
     #display all bankrupt players
     bankrupt_players = [p for p in game.players if p.bankrupt]
     if bankrupt_players:
-        print(f"\n{game.colors['title']}=== BANKRUPT PLAYERS ===")
+        print(f"\n{colors['title']}=== BANKRUPT PLAYERS ===")
         for player in bankrupt_players:
-            print(f"{game.colors['error']}{player.name} is bankrupt.")
+            print(f"{colors['error']}{player.name} is bankrupt.")
             
-    if input(f"{game.colors['prompt']}Display extended statistics? (y/n): {game.colors['reset']}").lower() == 'y':
+    if input(f"{colors['prompt']}Display extended statistics? (y/n): {colors['reset']}").lower() == 'y':
         display_extended_statistics(game)
         
 def display_extended_statistics(game):
     """Display more comprehensive game statistics."""
+    global colors
+    
     active_players = [p for p in game.players if not p.bankrupt]
     bankrupt_players = [p for p in game.players if p.bankrupt]
     
-    print(f"\n{game.colors['title']}=== EXTENDED GAME STATISTICS ===\n")
+    print(f"\n{colors['title']}=== EXTENDED GAME STATISTICS ===\n")
     
     # Player Rankings by Net Worth
-    print(f"{game.colors['title']}PLAYER RANKINGS BY NET WORTH:")
+    print(f"{colors['title']}PLAYER RANKINGS BY NET WORTH:")
     player_values = {}
     for p in game.players:
         total_value = p.money
@@ -96,11 +102,11 @@ def display_extended_statistics(game):
     
     # Sort players by net worth and display ranking
     for i, (name, value) in enumerate(sorted(player_values.items(), key=lambda x: x[1], reverse=True)):
-        status = f"{game.colors['success']}ACTIVE" if next((p for p in active_players if p.name == name), None) else f"{game.colors['error']}BANKRUPT"
-        print(f"{i+1}. {game.colors['player']}{name}: {game.colors['money']}${value:.2f} ({status}{game.colors['reset']})")
+        status = f"{colors['success']}ACTIVE" if next((p for p in active_players if p.name == name), None) else f"{colors['error']}BANKRUPT"
+        print(f"{i+1}. {colors['player']}{name}: {colors['money']}${value:.2f} ({status}{colors['reset']})")
     
     # Property Statistics
-    print(f"\n{game.colors['title']}PROPERTY STATISTICS:")
+    print(f"\n{colors['title']}PROPERTY STATISTICS:")
     property_stats = {
         "total": 0,
         "owned": 0,
@@ -153,28 +159,28 @@ def display_extended_statistics(game):
             else:
                 property_stats["unowned"] += 1
     
-    print(f"{game.colors['info']}Total Properties: {property_stats['total']}")
-    print(f"{game.colors['info']}Owned: {game.colors['success']}{property_stats['owned']} ({property_stats['owned']/property_stats['total']*100:.1f}%)")
-    print(f"{game.colors['info']}Unowned: {game.colors['warning']}{property_stats['unowned']}")
-    print(f"{game.colors['info']}Mortgaged: {game.colors['warning']}{property_stats['mortgaged']} ({property_stats['mortgaged']/property_stats['owned']*100:.1f}% of owned)")
-    print(f"{game.colors['info']}Properties with Houses/Hotels: {game.colors['success']}{property_stats['developed']}")
-    print(f"{game.colors['info']}Total Houses on Board: {game.colors['success']}{property_stats['houses']}")
-    print(f"{game.colors['info']}Total Hotels on Board: {game.colors['success']}{property_stats['hotels']}")
+    print(f"{colors['info']}Total Properties: {property_stats['total']}")
+    print(f"{colors['info']}Owned: {colors['success']}{property_stats['owned']} ({property_stats['owned']/property_stats['total']*100:.1f}%)")
+    print(f"{colors['info']}Unowned: {colors['warning']}{property_stats['unowned']}")
+    print(f"{colors['info']}Mortgaged: {colors['warning']}{property_stats['mortgaged']} ({property_stats['mortgaged']/property_stats['owned']*100:.1f}% of owned)")
+    print(f"{colors['info']}Properties with Houses/Hotels: {colors['success']}{property_stats['developed']}")
+    print(f"{colors['info']}Total Houses on Board: {colors['success']}{property_stats['houses']}")
+    print(f"{colors['info']}Total Hotels on Board: {colors['success']}{property_stats['hotels']}")
     
     if most_valuable_prop:
         owner_name = most_valuable_prop.owner.name if most_valuable_prop.owner else "None"
-        print(f"\n{game.colors['info']}Most Valuable Property: {game.colors['property']}{most_valuable_prop.name} (Owned by: {game.colors['player']}{owner_name})")
-        print(f"{game.colors['info']}Current Rent: {game.colors['rent']}${highest_rent}")
+        print(f"\n{colors['info']}Most Valuable Property: {colors['property']}{most_valuable_prop.name} (Owned by: {colors['player']}{owner_name})")
+        print(f"{colors['info']}Current Rent: {colors['rent']}${highest_rent}")
     
     # Most developed color group
     if color_development:
         most_dev_color = max(color_development.items(), 
                             key=lambda x: x[1]["houses"] + x[1]["hotels"]*5)
-        print(f"\n{game.colors['info']}Most Developed Color Group: {game.colors['property']}{most_dev_color[0].value}")
-        print(f"{game.colors['info']}Development: {game.colors['success']}{most_dev_color[1]['houses']} houses, {most_dev_color[1]['hotels']} hotels")
+        print(f"\n{colors['info']}Most Developed Color Group: {colors['property']}{most_dev_color[0].value}")
+        print(f"{colors['info']}Development: {colors['success']}{most_dev_color[1]['houses']} houses, {most_dev_color[1]['hotels']} hotels")
     
     # Monopoly statistics
-    print(f"\n{game.colors['title']}MONOPOLY STATISTICS:")
+    print(f"\n{colors['title']}MONOPOLY STATISTICS:")
     monopolies = {}
     for player in active_players:
         player_monopolies = []
@@ -188,32 +194,32 @@ def display_extended_statistics(game):
             monopolies[player.name] = player_monopolies
     
     if monopolies:
-        for player_name, colors in monopolies.items():
-            print(f"{game.colors['player']}{player_name} has monopoly on: {game.colors['property']}{', '.join(colors)}")
+        for player_name, monopoly_colors in monopolies.items():
+            print(f"{colors['player']}{player_name} has monopoly on: {colors['property']}{', '.join(monopoly_colors)}")
     else:
-        print(f"{game.colors['info']}No player has a monopoly on any color group.")
+        print(f"{colors['info']}No player has a monopoly on any color group.")
     
     # Special category ownership
-    print(f"\n{game.colors['title']}SPECIAL CATEGORY OWNERSHIP:")
+    print(f"\n{colors['title']}SPECIAL CATEGORY OWNERSHIP:")
     for category in [PropertyColor.RAILROAD, PropertyColor.UTILITY]:
         for player in active_players:
             count = sum(1 for p in player.properties if p.color == category)
             if count > 0:
-                print(f"{game.colors['player']}{player.name} owns {game.colors['success']}{count} {game.colors['property']}{category.value}s")
+                print(f"{colors['player']}{player.name} owns {colors['success']}{count} {colors['property']}{category.value}s")
     
     # Money distribution
     if active_players:
-        print(f"\n{game.colors['title']}MONEY DISTRIBUTION:")
+        print(f"\n{colors['title']}MONEY DISTRIBUTION:")
         total_money = sum(p.money for p in game.players)
         for player in game.players:
-            status = f"{game.colors['success']}Active" if not player.bankrupt else f"{game.colors['error']}Bankrupt"
+            status = f"{colors['success']}Active" if not player.bankrupt else f"{colors['error']}Bankrupt"
             percentage = (player.money / total_money * 100) if total_money > 0 else 0
-            print(f"{game.colors['player']}{player.name}: {game.colors['money']}${player.money} ({percentage:.1f}% of total) - {status}")
+            print(f"{colors['player']}{player.name}: {colors['money']}${player.money} ({percentage:.1f}% of total) - {status}")
     
     # game evaluation
     game_evaluation(game)
     
-    input(f"{game.colors['prompt']}Press Enter to continue...{game.colors['reset']}")
+    input(f"{colors['prompt']}Press Enter to continue...{colors['reset']}")
 
 def record_game_history(game, game_count=0):
     """Record game history for future analysis."""
@@ -247,14 +253,14 @@ def load_game_history(filename="game_history.pkl"):
 
 def game_evaluation(game):
     """Evaluate each player's chances of winning based on game state."""
-    print(f"\n{game.colors['title']}=== GAME WINNING PROBABILITY ANALYSIS ===\n")
+    print(f"\n{colors['title']}=== GAME WINNING PROBABILITY ANALYSIS ===\n")
     
     active_players = [p for p in game.players if not p.bankrupt]
     if len(active_players) <= 1:
         if active_players:
-            print(f"{game.colors['success']}{active_players[0].name} is the only player remaining and will win!")
+            print(f"{colors['success']}{active_players[0].name} is the only player remaining and will win!")
         else:
-            print(f"{game.colors['error']}No active players left in the game.")
+            print(f"{colors['error']}No active players left in the game.")
         return
     
     # Calculate win probabilities
@@ -394,7 +400,7 @@ def display_win_probabilities(game, player_evaluations, game_progress, game_phas
     """Display the calculated win and bankruptcy probabilities."""
     total_net_worth = player_evaluations.pop('total_net_worth', 0)
     
-    print(f"{game.colors['info']}Game Progress: {game.colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
+    print(f"{colors['info']}Game Progress: {colors['success']}{game_progress*100:.1f}% ({game_phase} game)\n")
     
     # Display results sorted by win probability
     sorted_players = sorted(player_evaluations.items(), key=lambda x: x[1]['win_probability'], reverse=True)
@@ -402,19 +408,19 @@ def display_win_probabilities(game, player_evaluations, game_progress, game_phas
     for i, (player, data) in enumerate(sorted_players):
         # Calculate color for probability
         if data['win_probability'] > 50:
-            prob_color = game.colors['success']
+            prob_color = colors['success']
         elif data['win_probability'] > 25:
-            prob_color = game.colors['warning']
+            prob_color = colors['warning']
         else:
-            prob_color = game.colors['error']
+            prob_color = colors['error']
             
-        print(f"{i+1}. {game.colors['player']}{player.name}: {prob_color}{data['win_probability']:.1f}% chance to win")
-        print(f"   Net Worth: {game.colors['money']}${data['net_worth']:.0f} " + 
+        print(f"{i+1}. {colors['player']}{player.name}: {prob_color}{data['win_probability']:.1f}% chance to win")
+        print(f"   Net Worth: {colors['money']}${data['net_worth']:.0f} " + 
                 f"({data['net_worth']/total_net_worth*100:.1f}% of total)")
         
         # Display bankruptcy probability
-        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
+        bankruptcy_color = colors['success'] if data['bankruptcy_probability'] < 25 else (
+                            colors['warning'] if data['bankruptcy_probability'] < 50 else colors['error'])
         print(f"   Bankruptcy Risk: {bankruptcy_color}{data['bankruptcy_probability']:.1f}%")
         
         # Show key factors
@@ -429,27 +435,27 @@ def display_win_probabilities(game, player_evaluations, game_progress, game_phas
             factors.append(f"low cash ({data['cash_ratio']*100:.0f}%)")
         
         if factors:
-            print(f"   Key factors: {game.colors['info']}{', '.join(factors)}")
+            print(f"   Key factors: {colors['info']}{', '.join(factors)}")
         print()
     
     # Display players sorted by bankruptcy risk
-    print(f"\n{game.colors['title']}=== BANKRUPTCY RISK ANALYSIS ===\n")
+    print(f"\n{colors['title']}=== BANKRUPTCY RISK ANALYSIS ===\n")
     bankruptcy_sorted = sorted(player_evaluations.items(), key=lambda x: x[1]['bankruptcy_probability'], reverse=True)
     
-    print(f"{game.colors['info']}Players most likely to go bankrupt next:")
+    print(f"{colors['info']}Players most likely to go bankrupt next:")
     for i, (player, data) in enumerate(bankruptcy_sorted[:3]):  # Show top 3 at risk
-        bankruptcy_color = game.colors['success'] if data['bankruptcy_probability'] < 25 else (
-                            game.colors['warning'] if data['bankruptcy_probability'] < 50 else game.colors['error'])
-        print(f"{i+1}. {game.colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
-        print(f"   Cash: {game.colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
+        bankruptcy_color = colors['success'] if data['bankruptcy_probability'] < 25 else (
+                            colors['warning'] if data['bankruptcy_probability'] < 50 else colors['error'])
+        print(f"{i+1}. {colors['player']}{player.name}: {bankruptcy_color}{data['bankruptcy_probability']:.1f}% risk")
+        print(f"   Cash: {colors['money']}${player.money} ({data['cash_ratio']*100:.0f}% of assets)")
         
         # Additional risk factors
         mortgaged = sum(1 for p in player.properties if p.status == PropertyStatus.MORTGAGED)
         if mortgaged > 0:
-            print(f"   {game.colors['warning']}Has {mortgaged} mortgaged properties")
+            print(f"   {colors['warning']}Has {mortgaged} mortgaged properties")
 
 
-def display_game_statistics(game_stats, colors):
+def display_game_statistics(game_stats):
     # Print overall statistics with improved color and layout
     print(f"{colors['title']}\n===== OVERALL GAME STATISTICS ====={colors['reset']}")
     print(f"{colors['info']}Total games played: {colors['success']}{game_stats['games_played']}{colors['reset']}")
@@ -628,6 +634,11 @@ def display_game_statistics(game_stats, colors):
                 print(f"  {rank_color}{i+1}. {prop_type} properties ({count} owned){colors['reset']}")
     
     # Display bot parameters with improved formatting
+    if input(f"{colors['prompt']}Display bot parameters? (y/n): {colors['reset']}").lower() == 'y':
+        pass
+    else:
+        return
+    
     print(f"\n{colors['title']}===== PLAYER PARAMETERS ====={colors['reset']}")
     print(f"{colors['title']}==================================={colors['reset']}")
     

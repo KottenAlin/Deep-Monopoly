@@ -6,6 +6,7 @@ from enum import Enum
 import torch
 import matplotlib.pyplot as plt
 from stats import calculate_win_probabilities
+from variables import colors
 
 
 global parameters
@@ -319,7 +320,7 @@ class Bot:
 
                 # Make the trade offer
                 if self.display:
-                    colors = self.game.colors
+                    
 
                     print(
                         f"\n{colors['bot']}BOT TRADE ({self.personality_type}): {colors['player']}{self.player.name} {colors['title']}offers {colors['player']}{target_owner.name} {colors['title']}a trade:{colors['reset']}"

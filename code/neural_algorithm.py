@@ -13,6 +13,7 @@ import os
 from game_models import Property, PropertyColor, PropertyStatus
 import types
 from colorama import Fore, Style, Back
+from variables import colors
 
 
 # hyperparameters
@@ -1547,6 +1548,21 @@ class ActionNeuralBot(Bot):
 
     def save_model(self, path="models/action_neural_bot_model.pth"):
         """Save the neural network model"""
+        # Check if the file exists and add a number to the filename if it does
+        base_path = os.path.splitext(path)[0]
+        extension = os.path.splitext(path)[1]
+        counter = 1
+        actual_path = path
+
+        while os.path.exists(actual_path):
+            actual_path = f"{base_path}_{counter}{extension}"
+            counter += 1
+
+        # Make sure the directory exists
+        os.makedirs(os.path.dirname(actual_path), exist_ok=True)
+        # Save the model
+        torch.save(self.model.state_dict(), actual_path)
+        print(f"Model saved to {actual_path}")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.model.state_dict(), path)
 
@@ -1562,18 +1578,8 @@ class ActionNeuralBot(Bot):
 def main():
     """Main function to run the neural algorithm"""
     print(
-        f"{Fore.CYAN}{Style.BRIGHT}Starting Neural Algorithm for Monopoly{Style.RESET_ALL}"
+        f"{colors['title']}Starting Neural Algorithm for Monopoly{colors['reset']}"
     )
-
-    global colors
-    colors = {
-        "title": Fore.CYAN + Style.BRIGHT,
-        "prompt": Fore.YELLOW,
-        "info": Fore.WHITE,
-        "success": Fore.GREEN,
-        "error": Fore.RED,
-        "reset": Style.RESET_ALL,
-    }
 
     # Initialize neural algorithm
     algorithm = NeuralAlgorithm(LEARNING_RATE, MEMORY_SIZE, BATCH_SIZE, HIDDEN_SIZE)
@@ -1581,15 +1587,15 @@ def main():
     # Try to load existing model
     model_loaded = algorithm.load_model()
     if not model_loaded:
-        print(f"{Fore.YELLOW}Starting with a new model{Style.RESET_ALL}")
+        print(f"{colors['warning']}Starting with a new model{colors['reset']}")
 
     # play the models against each other
-    print(f"{Fore.CYAN}Running self-play tournament...{Style.RESET_ALL}")
+    print(f"{colors['title']}Running self-play tournament...{colors['reset']}")
     algorithm.run_self_play_tournament(
         generations=5, matches_per_generation=20
     )  # Adjust as needed
 
-    input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+    input(f"{colors['prompt']}Press Enter to continue...{colors['reset']}")
 
     # Run training games
     results = algorithm.run_training_games(
@@ -1600,18 +1606,18 @@ def main():
     algorithm.save_model()
 
     # Display final results
-    print(f"\n{Fore.GREEN}{Style.BRIGHT}Training completed!{Style.RESET_ALL}")
+    print(f"\n{colors['success']}{Style.BRIGHT}Training completed!{colors['reset']}")
     print(
-        f"{Fore.CYAN}Final win rate: {Fore.GREEN}{results['win_rates'][-1]:.2f}{Style.RESET_ALL}"
+        f"{colors['title']}Final win rate: {colors['success']}{results['win_rates'][-1]:.2f}{colors['reset']}"
     )
     print(
-        f"{Fore.CYAN}Final average reward: {Fore.GREEN}{results['rewards'][-1]:.4f}{Style.RESET_ALL}"
+        f"{colors['title']}Final average reward: {colors['success']}{results['rewards'][-1]:.4f}{colors['reset']}"
     )
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}Optimal parameters found:{Style.RESET_ALL}")
+    print(f"\n{colors['title']}{Style.BRIGHT}Optimal parameters found:{colors['reset']}")
     for name, value in results["final_parameters"].items():
-        print(f"  {Fore.YELLOW}{name}: {Fore.GREEN}{value:.4f}{Style.RESET_ALL}")
+        print(f"  {colors['prompt']}{name}: {colors['success']}{value:.4f}{colors['reset']}")
 
-    print(f"\n{Fore.CYAN}Evaluating final model in test games...{Style.RESET_ALL}")
+    print(f"\n{colors['title']}Evaluating final model in test games...{colors['reset']}")
 
     # Run some test games with the final model
     final_params = results["final_parameters"]
@@ -1619,7 +1625,7 @@ def main():
     num_test_games = 5
 
     for i in range(num_test_games):
-        print(f"{Fore.CYAN}Test game {i+1}/{num_test_games}...{Style.RESET_ALL}")
+        print(f"{colors['title']}Test game {i+1}/{num_test_games}...{colors['reset']}")
 
         # Create a game with neural bot
         game = MonopolyGame(
@@ -1637,14 +1643,14 @@ def main():
         game_result = game.play_game()
 
         if game_result["winner"] == game.players[0]:
-            print(f"{Fore.GREEN}Neural bot wins!{Style.RESET_ALL}")
+            print(f"{colors['success']}Neural bot wins!{colors['reset']}")
             test_wins += 1
 
     print(
-        f"\n{Fore.CYAN}Test win rate: {Fore.GREEN}{test_wins/num_test_games:.2f}{Style.RESET_ALL}"
+        f"\n{colors['title']}Test win rate: {colors['success']}{test_wins/num_test_games:.2f}{colors['reset']}"
     )
     print(
-        f"{Fore.GREEN}{Style.BRIGHT}Neural algorithm training complete!{Style.RESET_ALL}"
+        f"{colors['success']}{Style.BRIGHT}Neural algorithm training complete!{colors['reset']}"
     )
 
 

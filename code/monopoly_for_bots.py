@@ -1,92 +1,23 @@
 import random
 import os
 
-# import numpy as np
-import matplotlib.pyplot as plt
 
 # methods for the game
 from game_models import Property, PropertyStatus
 from board import Board
 from player import Player
-from colorama import init, Fore, Style
-from stats import display_statistics, display_game_statistics
 
-# Initialize colorama
-init()
+from stats import display_statistics, display_game_statistics
+from variables import bots_parameters, game_stats, colors, num_games
+
 
 """ 
     Monopoly Game for Bot Players with less things #printed for speed
     """
-num_games = 100
-game_stats = {
-    "games_played": 0,
-    "average_turns": 0,
-    "wins_by_player": {},  # Will track number of wins per player
-    "bankrupt_count": {},  # Will track number of bankruptcies per player
-    "turns": {},
-    "game_over_500_turns": 0,
-    # New detailed statistics
-    "avg_houses_per_player": {},  # Average houses owned by each player
-    "avg_hotels_per_player": {},  # Average hotels owned by each player
-    "monopolies_owned": {},       # Count of color monopolies owned by each player
-    "avg_rent_collected": {},     # Average rent collected by each player
-    "total_rent_collected": {},   # Total rent collected by each player
-    "property_acquisitions": {},  # Number of properties acquired by each player
-    "trades_made": {},            # Number of trades made by each player
-    "trades_accepted": {},        # Number of trade offers accepted
-    "trades_rejected": {},        # Number of trade offers rejected
-    "most_valuable_property": {}, # Most valuable property (highest rent) for each player
-    "most_owned_property_type": {}, # Most frequently owned property type/color
-}
 
-colors = {
-    "title": Fore.CYAN + Style.BRIGHT,
-    "prompt": Fore.YELLOW,
-    "info": Fore.WHITE,
-    "success": Fore.GREEN,
-    "error": Fore.RED,
-    "reset": Style.RESET_ALL,
-}
 
 # initiate risk tolerance for each bot
-bots_parameters = [
-    {
-        "risk_tolerance": 1.0,
-        "property_focus": 1.0,
-        "development_focus": 1.0,
-        "cash_reserve_preference": 1.0,
-        "trade_willingness": 1.0,
-        "monopoly_focus": 1.0,
-        "railroad_utility_interest": 1.0,
-    },
-    {
-        "risk_tolerance": 1.0,
-        "property_focus": 1.0,
-        "development_focus": 1.0,
-        "cash_reserve_preference": 0.5,
-        "trade_willingness": 0.7,
-        "monopoly_focus": 1.0,
-        "railroad_utility_interest": 0,
-    },
-    {
-        "risk_tolerance": 0,
-        "property_focus": 0,
-        "development_focus": 0,
-        "cash_reserve_preference": 0,
-        "trade_willingness": 1,
-        "monopoly_focus": 0,
-        "railroad_utility_interest": 0,
-    },
-    {
-        "risk_tolerance": 0.2,
-        "property_focus": 0.5,
-        "development_focus": 0.7,
-        "cash_reserve_preference": 0.7,
-        "trade_willingness": 0.5,
-        "monopoly_focus": 1,
-        "railroad_utility_interest": 0.3,
-    },
-]
+
 
 
 class MonopolyGame:
@@ -607,63 +538,7 @@ class MonopolyGame:
 
         return result
 
-        # input(f"{colors['prompt']}display statistics... {colors['reset']}")
-        # display_statistics(self)
 
-
-        # Display a comprehensive property and building report
-        print(
-            f"{colors['title']}\n=== PROPERTY AND BUILDING REPORT ==={colors['reset']}"
-        )
-        active_players = [p for p in self.players if not p.bankrupt]
-
-        # Count total houses and hotels on the board
-        total_houses = 0
-        total_hotels = 0
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                if hasattr(space, "houses") and space.houses > 0:
-                    total_houses += space.houses
-                if hasattr(space, "hotel") and space.hotel:
-                    total_hotels += 1
-
-        print(
-            f"{colors['info']}Total buildings on board: {total_houses} houses, {total_hotels} hotels{colors['reset']}"
-        )
-
-        # Display all properties grouped by color
-        color_groups = {}
-        for space in self.board.spaces:
-            if isinstance(space, Property):
-                if space.color not in color_groups:
-                    color_groups[space.color] = []
-                color_groups[space.color].append(space)
-
-        # print properties by color group
-        for color, properties in color_groups.items():
-            print(f"{colors['info']}\n{color.value} Properties:{colors['reset']}")
-            for prop in properties:
-                owner_info = f"Owned by {prop.owner.name}" if prop.owner else "Unowned"
-                status_info = (
-                    f" (Mortgaged)" if prop.status == PropertyStatus.MORTGAGED else ""
-                )
-
-                building_info = ""
-                if hasattr(prop, "houses") and prop.houses > 0:
-                    building_info = f", {prop.houses} houses"
-                if hasattr(prop, "hotel") and prop.hotel:
-                    building_info = ", Hotel"
-
-                rent_info = (
-                    f", Current rent: ${prop.calculate_rent()}" if prop.owner else ""
-                )
-                print(
-                    f"{colors['info']}  {prop.name} - ${prop.price} - {owner_info}{status_info}{building_info}{rent_info}{colors['reset']}"
-                )
-
-        # print player property summaries
-        print(f"{colors['info']}\nPlayer Property Summaries:{colors['reset']}")
-        for player in active_players:
             property_count = len(player.properties)
             house_count = sum(
                 p.houses for p in player.properties if hasattr(p, "houses")
@@ -706,17 +581,20 @@ def main():
     # Global variable to track game statistics
     global game_stats
 
-    bot_count = int(
-        input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}")
-    )
-    if input(f"{colors['prompt']}Use custom parameters? (y/n): {colors['reset']}").lower() == "y":
-        select_parameters()
-    
-    neural_bot_count = int(
-        input(
-            f"{colors['prompt']}how many should be neural bots? (0-{bot_count}): {colors['reset']}"
-        )
-    )
+    try:
+        bot_count_input = input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}")
+        bot_count = int(bot_count_input) if bot_count_input else 2
+        if input(f"{colors['prompt']}Use custom parameters? (y/n): {colors['reset']}").lower() == "y":
+            select_parameters()
+        
+        neural_bot_count_input = input(
+                f"{colors['prompt']}how many should be neural bots? (0-{bot_count_input}): {colors['reset']}"
+            )
+        neural_bot_count = int(neural_bot_count_input) if neural_bot_count_input else 0
+        
+    except ValueError:
+        print(f"{colors['error']}Invalid input. Please enter a number.{colors['reset']}")
+        main()
 
     if bot_count < 2 or bot_count > 8:
         print(
@@ -758,7 +636,7 @@ def main():
         game_stats["games_played"] += 1
 
     # save_game_history()
-    display_game_statistics(game_stats, colors)
+    display_game_statistics(game_stats)
 
     print(f"{colors['title']}\nGame over!{colors['reset']}")
 

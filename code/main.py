@@ -1,20 +1,15 @@
 import sys
 import os
+
+import genetic_algorithem
 import monopoly_game as monopoly_game
 import monopoly_for_bots
 import neural_algorithm
-from colorama import init, Fore, Back, Style
 import stats as stats
 
+from variables import colors
 
-colors = {
-    'title': Fore.CYAN + Style.BRIGHT,
-    'prompt': Fore.YELLOW,
-    'info': Fore.WHITE,
-    'success': Fore.GREEN,
-    'error': Fore.RED,
-    'reset': Style.RESET_ALL,
-}
+
 
 def main():
     while True:
@@ -22,8 +17,9 @@ def main():
         print(f"{colors['info']}1. Play Monopoly")
         print(f"{colors['info']}2. Simulate Bot Games")
         print(f"{colors['info']}3. Train Neural bots")
-        print(f"{colors['info']}4. View Statistics")
-        print(f"{colors['info']}5. Exit")
+        print(f"{colors['info']}4. Train Genetic Algorithm")
+        print(f"{colors['info']}5. View Statistics")
+        print(f"{colors['info']}6. Exit")
         
         choice = input(f"\n{colors['prompt']}Enter your choice (1-4): {colors['reset']}")
         
@@ -33,18 +29,23 @@ def main():
             
         elif choice == '2':
             # Simulate games between bots
-            monopoly_for_bots.MonopolyGame().play_game()
+            monopoly_for_bots.main()
             
         elif choice == '3':
             # Train neural bots
             print(f"{colors['info']}Training neural bots...")
-            neural_algorithm
+            neural_algorithm.main()
         elif choice == '4':
+            # Train genetic algorithm
+            print(f"{colors['info']}Training genetic algorithm...")
+            genetic_algorithem.main()
+        elif choice == '5':
             # Display game statistics
             print(f"{colors['title']}===== GAME STATISTICS =====")
             print(f"{colors['error']} Statistics are not available yet.")
+            input(f"{colors['prompt']}Press Enter to return to the menu...{colors['reset']}")
         
-        elif choice == '5' or choice == 'exit':
+        elif choice == '6' or choice == 'exit':
             print(f"{colors['success']}Thank you for playing Monopoly!")
             sys.exit(0)
             
@@ -54,4 +55,10 @@ def main():
         os.system('cls' if os.name == 'nt' else 'clear')
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"{colors['error']}Game interrupted. Exiting...")
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+        

@@ -2,6 +2,7 @@ from Bot import Bot, parameters
 
 from game_models import PropertyStatus, Property
 from colorama import Fore, Style, Back
+from variables import colors
 
 
 class Player:
@@ -63,21 +64,6 @@ class Player:
         self.properties.append(property)
 
     def display_status(self, board):
-        colors = {
-            "title": Fore.CYAN + Style.BRIGHT,
-            "prompt": Fore.YELLOW,
-            "info": Fore.WHITE,
-            "success": Fore.GREEN,
-            "warning": Fore.YELLOW,
-            "error": Fore.RED,
-            "money": Fore.GREEN + Style.BRIGHT,
-            "property": Fore.MAGENTA,
-            "player": Fore.BLUE + Style.BRIGHT,
-            "dice": Fore.CYAN,
-            "rent": Fore.RED + Style.BRIGHT,
-            "jail": Fore.WHITE + Back.BLACK,
-            "reset": Style.RESET_ALL,
-        }
 
         print(f"\n{colors['player']}{self.name} ({self.token}):{colors['reset']}")
 
