@@ -15,7 +15,7 @@ from variables import bots_parameters, game_stats, colors, num_games, initialise
     Monopoly Game for Bot Players with less things #printed for speed
     """
 
-initialise_game_stats(4) #:(
+#initialise_game_stats(4, 0) #:(
 
 # initiate risk tolerance for each bot
 
@@ -24,7 +24,8 @@ class MonopolyGame:
     def __init__(
         self, bot_count=2, neural_bot_count=2, bots_parameters=bots_parameters, game_count=0,
     ):
-
+        initialise_game_stats(bot_count, neural_bot_count)
+        
         if bot_count < 2:
             print(
                 f"{colors['error']}Not enough players to start the game.{colors['reset']}"
@@ -62,6 +63,7 @@ class MonopolyGame:
             name = f"Bot {i + 1}"
             token = "🤖"
             if i < neural_bot_count:
+                name = f"NeuralBot {i + 1}"
                 player = Player(
                     name,
                     token,
@@ -71,6 +73,7 @@ class MonopolyGame:
                     bot_type="neural",
                 )
             else:
+                name = f"Bot {i + 1}"
                 player = Player(
                     name,
                     token,
@@ -597,6 +600,7 @@ def main():
     global game_stats
 
     try:
+        os.system("cls" if os.name == "nt" else "clear")
         bot_count_input = input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}")
         bot_count = int(bot_count_input) if bot_count_input else 2
         if input(f"{colors['prompt']}Use custom parameters? (y/n): {colors['reset']}").lower() == "y":
@@ -618,9 +622,12 @@ def main():
             f"{colors['error']}Invalid number of bots. Please enter a number between 0 and 8.{colors['reset']}"
         )
         return
+    else:
+            # Initialize all statistics for each bot
+        print(f"{colors['info']}Initializing game statistics...{colors['reset']}")
+        initialise_game_stats(bot_count, neural_bot_count)
 
-    # Initialize all statistics for each bot
-    initialise_game_stats(bot_count)
+
 
     for i in range(num_games):  # play 100 games
         print(f"{colors['info']}Game {i+1} of 100{colors['reset']}")

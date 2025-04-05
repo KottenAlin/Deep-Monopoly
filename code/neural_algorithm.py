@@ -16,11 +16,11 @@ from colorama import Fore, Style
 from variables import colors
 
 # Simplified hyperparameters
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.0001
 BATCH_SIZE = 32
 MEMORY_SIZE = 500
-NUMBER_OF_GAMES = 30
-NUMBER_OF_EPOCHS = 5
+NUMBER_OF_GAMES = 50
+NUMBER_OF_EPOCHS = 100
 HIDDEN_SIZE = 64
 
 class MonopolyNeuralModel(nn.Module):
@@ -28,10 +28,11 @@ class MonopolyNeuralModel(nn.Module):
     def __init__(self, input_size=124, hidden_size=64, output_size=10):
         super(MonopolyNeuralModel, self).__init__()
         
-        # Simpler architecture: just two layers
+        # More expressive architecture with multiple hidden layers
         self.input_layer = nn.Linear(input_size, hidden_size)
-        self.hidden_layer = nn.Linear(hidden_size, hidden_size)
-        self.output_layer = nn.Linear(hidden_size, output_size)
+        self.hidden_layer1 = nn.Linear(hidden_size, hidden_size)
+        self.hidden_layer2 = nn.Linear(hidden_size, hidden_size // 2)
+        self.output_layer = nn.Linear(hidden_size // 2, output_size)
         
         # Simple dropout for regularization
         self.dropout = nn.Dropout(0.2)
@@ -41,11 +42,14 @@ class MonopolyNeuralModel(nn.Module):
         if x.dim() == 1:
             x = x.unsqueeze(0)
         
-        # Simple forward pass
+        # Forward pass with additional hidden layer
         x = torch.relu(self.input_layer(x))
         x = self.dropout(x) if self.training else x
-        x = torch.relu(self.hidden_layer(x))
-        x = torch.sigmoid(self.output_layer(x))
+        x = torch.relu(self.hidden_layer1(x))
+        x = self.dropout(x) if self.training else x
+        x = torch.relu(self.hidden_layer2(x))
+        # Use raw outputs instead of sigmoid to allow more flexible outputs
+        x = self.output_layer(x)
         
         # Remove batch dimension if it was added
         if x.size(0) == 1:
@@ -80,7 +84,7 @@ class NeuralAlgorithm:
     def __init__(self, learning_rate=0.01, memory_size=500, batch_size=32, hidden_size=64):
         self.input_size = 124
         self.hidden_size = hidden_size
-        self.output_size = 10
+        self.output_size = 10  # Can be adjusted based on decision types needed
         self.learning_rate = learning_rate
         
         # Create model and optimizer
@@ -97,18 +101,32 @@ class NeuralAlgorithm:
         self.win_rates = []
         self.rewards_history = []
         
-        # Parameter names for reference
+        # Decision types for reference
+        self.decision_types = [
+            "buy_property",
+            "auction_bid",
+            "develop_property",
+            "mortgage_property",
+            "trade_initiate",
+            "trade_accept",
+            "use_jail_card",
+            "pay_jail_fine",
+            "sell_houses",
+            "trade_value_modifier"
+        ]
+        
+        # Add parameter names attribute - these map neural outputs to strategy parameters
         self.parameter_names = [
             "risk_tolerance",
             "property_focus",
-            "development_focus",
+            "development_focus", 
             "cash_reserve_preference",
             "trade_willingness",
             "monopoly_focus",
             "railroad_utility_interest",
             "property_management_focus",
             "trade_acceptance_threshold",
-            "property_value_assessment",
+            "property_value_assessment"
         ]
     
     def create_game_state_vector(self, game, player=None):
@@ -237,7 +255,7 @@ class NeuralAlgorithm:
         
         return loss.item()
     
-    def plot_training_progress(self, losses=None):
+    def plot_training_progress(self, losses=None, detailed_win_rates=None, detailed_rewards=None):
         """Plot detailed training progress metrics"""
         plt.figure(figsize=(15, 12))
         plt.suptitle("Monopoly Neural Training Results", fontsize=16)
@@ -267,22 +285,21 @@ class NeuralAlgorithm:
             plt.ylabel('Loss')
             plt.grid(True, alpha=0.3)
         
-        # Plot final parameters as a bar chart
+        # Plot neural outputs
         plt.subplot(2, 2, 4)
-        current_params = self.get_bot_parameters(torch.zeros(self.input_size, dtype=torch.float32))
-        param_names = list(current_params.keys())
-        param_values = list(current_params.values())
+        test_state = torch.zeros(self.input_size, dtype=torch.float32)
+        with torch.no_grad():
+            neural_outputs = self.model(test_state).tolist()
         
-        # Create a colorful bar chart
-        bars = plt.bar(range(len(param_names)), param_values, 
+        # Create a colorful bar chart with raw outputs
+        bars = plt.bar(range(len(self.decision_types)), neural_outputs, 
                        color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', 
                               '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', 
                               '#bcbd22', '#17becf'])
         
-        plt.title('Bot Parameters')
-        plt.xlabel('Parameter')
-        plt.xticks(range(len(param_names)), param_names, rotation=45, ha='right')
-        plt.ylim(0, 1.0)
+        plt.title('Neural Decision Outputs')
+        plt.xlabel('Decision Type')
+        plt.xticks(range(len(self.decision_types)), self.decision_types, rotation=45, ha='right')
         plt.grid(True, axis='y', alpha=0.3)
         
         # Add value labels on top of bars
@@ -299,8 +316,11 @@ class NeuralAlgorithm:
         plt.show()
     
     def run_training_games(self, num_games=20, num_epochs=3):
-        """Run training games with simplified approach"""
+        """Run training games with more detailed tracking"""
         losses = []  # Track losses for plotting
+        win_rates_detailed = []  # More granular win rate tracking
+        rewards_detailed = []  # More granular reward tracking
+        high_winrate_achieved = False  # Track if we've already saved a high win rate model
         
         for epoch in range(num_epochs):
             print(f"Epoch {epoch+1}/{num_epochs}")
@@ -309,6 +329,10 @@ class NeuralAlgorithm:
             total_reward = 0
             
             epoch_losses = []  # Track losses for this epoch
+            epoch_wins = []    # Track wins at same granularity
+            epoch_rewards = [] # Track rewards at same granularity
+            win_window = []    # For running win rate calculation
+            reward_window = [] # For running reward calculation
             
             for game_num in range(num_games):
                 if game_num % 5 == 0:
@@ -339,15 +363,25 @@ class NeuralAlgorithm:
                 
                 # Get results
                 neural_player = game.players[0]
-                if game.winner == neural_player:
-                    wins += 1
+                game_win = 1 if game.winner == neural_player else 0
+                wins += game_win
                 
+                # Add to win window for running calculation
+                win_window.append(game_win)
+                if len(win_window) > 10:  # Use a 10-game window
+                    win_window.pop(0)
+                    
                 # Calculate reward (simplified)
                 reward = 1.0 if game.winner == neural_player else -0.2
                 reward += neural_player.money / 5000.0  # Small reward for money
                 reward += len(neural_player.properties) / 28.0  # Small reward for properties
                 
                 total_reward += reward
+                
+                # Add to reward window
+                reward_window.append(reward)
+                if len(reward_window) > 10:  # Use a 10-game window
+                    reward_window.pop(0)
                 
                 # Create final state
                 final_state = self.create_game_state_vector(game, neural_player)
@@ -359,11 +393,29 @@ class NeuralAlgorithm:
                 if len(self.memory) >= self.batch_size and game_num % 5 == 0:
                     loss = self.train_from_memory()
                     epoch_losses.append(loss)
+                    
+                    # Also record win rate and reward at the same frequency
+                    current_win_rate = sum(win_window) / len(win_window)
+                    current_reward = sum(reward_window) / len(reward_window)
+                    
+                    epoch_wins.append(current_win_rate)
+                    epoch_rewards.append(current_reward)
+                    
+                    # Print current metrics
+                    print(f"    Loss: {loss:.4f}, Win Rate: {current_win_rate:.2f}, Reward: {current_reward:.2f}")
+                    
+                    # Save model if win rate is above threshold
+                    if current_win_rate > 0.35 and not high_winrate_achieved:
+                        self.save_model("models/high_winrate_model.pth")
+                        print(f"{colors['success']}High win rate model saved! ({current_win_rate:.2f}){colors['reset']}")
+                        high_winrate_achieved = True
             
-            # Add epoch losses to overall losses
+            # Add epoch data to overall tracking
             losses.extend(epoch_losses)
+            win_rates_detailed.extend(epoch_wins)
+            rewards_detailed.extend(epoch_rewards)
             
-            # Calculate metrics
+            # Calculate overall epoch metrics
             win_rate = wins / num_games
             avg_reward = total_reward / num_games
             
@@ -372,23 +424,29 @@ class NeuralAlgorithm:
             
             print(f"  Win rate: {win_rate:.2f}, Avg reward: {avg_reward:.2f}")
             
-            # Show current parameters
+            # Also check overall epoch win rate for saving high-performing models
+            if win_rate > 0.35 and not high_winrate_achieved:
+                self.save_model("models/high_winrate_model.pth")
+                print(f"{colors['success']}High win rate model saved at end of epoch! ({win_rate:.2f}){colors['reset']}")
+                high_winrate_achieved = True
+
             current_params = self.get_bot_parameters(torch.zeros(self.input_size, dtype=torch.float32))
-            print("  Current parameters:")
-            for name, value in current_params.items():
-                print(f"    {name}: {value:.4f}")
-        
-        # Plot training progress at the end
-        self.plot_training_progress(losses=losses)
+
+        # Plot training progress at the end with detailed metrics
+        self.plot_training_progress(losses=losses, detailed_win_rates=win_rates_detailed, 
+                                  detailed_rewards=rewards_detailed)
         
         return {
             "win_rates": self.win_rates,
             "rewards": self.rewards_history,
             "final_parameters": current_params,
-            "losses": losses
+            "losses": losses,
+            "detailed_win_rates": win_rates_detailed,
+            "detailed_rewards": rewards_detailed,
+            "high_winrate_achieved": high_winrate_achieved
         }
     
-    def run_self_play_tournament(self, generations=3, matches_per_generation=10):
+    def run_self_play_tournament(self, generations=50, matches_per_generation=50):
         """Run a simplified self-play tournament"""
         # Start with a few models
         model_pool = []
@@ -496,17 +554,17 @@ class NeuralAlgorithm:
 class ActionNeuralBot(Bot):
     """A neural bot for Monopoly"""
     def __init__(self, player, game, parameters=None, display=True, property=None):
-        # Default parameters
-        if parameters is None:
-            parameters = {
-                "risk_tolerance": 0.5,
-                "property_focus": 0.5,
-                "development_focus": 0.5,
-                "cash_reserve_preference": 0.5,
-                "trade_willingness": 0.5,
-                "monopoly_focus": 0.5,
-                "railroad_utility_interest": 0.5,
-            }
+        # Initialize with default parameters for Bot parent class
+        default_params = {
+            "risk_tolerance": 0.5,
+            "property_focus": 0.5,
+            "development_focus": 0.5,
+            "cash_reserve_preference": 0.5,
+            "trade_willingness": 0.5,
+            "monopoly_focus": 0.5,
+            "railroad_utility_interest": 0.5,
+        }
+        parameters = parameters or default_params
             
         super().__init__(player, game, parameters, display, property)
         
@@ -516,12 +574,7 @@ class ActionNeuralBot(Bot):
         self.output_dim = 10
         
         # Create the model
-        self.model = nn.Sequential(
-            nn.Linear(self.input_dim, self.hidden_dim),
-            nn.ReLU(),
-            nn.Linear(self.hidden_dim, self.output_dim),
-            nn.Sigmoid()
-        )
+        self.model = MonopolyNeuralModel(self.input_dim, self.hidden_dim, self.output_dim)
         
         # Exploration parameter
         self.epsilon = 0.2
@@ -546,34 +599,46 @@ class ActionNeuralBot(Bot):
         
         return torch.tensor(state[:self.input_dim], dtype=torch.float32)
     
-    def _get_action_probabilities(self):
-        """Get action probabilities from the model"""
+    def _get_neural_decisions(self):
+        """Get direct decision outputs from the neural network"""
         state = self._get_state()
         with torch.no_grad():
-            return self.model(state)
+            outputs = self.model(state)
+            return outputs
+    
+    def _get_action_probabilities(self):
+        """Get neural network outputs and convert to probabilities for decision making"""
+        # Get raw outputs from neural network
+        outputs = self._get_neural_decisions()
+        
+        # Convert to probabilities using sigmoid for values that need to be between 0 and 1
+        probs = torch.sigmoid(outputs)
+        
+        return probs
     
     def decide_buy_property(self, property):
-        """Decide whether to buy property"""
-        # Occasionally use random strategy
+        """Decide whether to buy property using direct neural output"""
+        # Occasionally use random strategy for exploration
         if random.random() < self.epsilon:
             return super().decide_buy_property(property)
         
-        # Get action probabilities
-        probs = self._get_action_probabilities()
+        # Get neural decisions
+        decisions = self._get_neural_decisions()
         
-        # Use first output for buy decision
-        return probs[0].item() > 0.5
+        # Buy decision is first output, use threshold of 0
+        return decisions[0].item() > 0
     
     def decide_auction_bid(self, property, current_bid):
-        """Decide auction bid"""
+        """Decide auction bid using neural output to scale the bid"""
         if random.random() < self.epsilon:
             return super().decide_auction_bid(property, current_bid)
         
-        probs = self._get_action_probabilities()
+        decisions = self._get_neural_decisions()
         
-        # Scale bid based on second output
-        bid_factor = probs[1].item()
-        max_bid = min(self.player.money * 0.8, property.price * 1.5)
+        # Scale bid based on neural output - allow for more flexible bidding
+        # Map the output to a percentage of property price
+        bid_factor = torch.sigmoid(decisions[1]).item()  # Convert to 0-1 range
+        max_bid = min(self.player.money * 0.8, property.price * 2.0)
         bid = current_bid + int((max_bid - current_bid) * bid_factor)
         
         if bid <= current_bid:
@@ -892,13 +957,14 @@ def main():
     
     if choice == "1":
         print(f"{colors['title']}Running self-play tournament...{colors['reset']}")
-        algorithm.run_self_play_tournament(generations=3, matches_per_generation=10)
+        algorithm.run_self_play_tournament(generations=25, matches_per_generation=NUMBER_OF_GAMES)
     else:
         print(f"{colors['title']}Running training against standard bots...{colors['reset']}")
         results = algorithm.run_training_games(num_games=NUMBER_OF_GAMES, num_epochs=NUMBER_OF_EPOCHS)
         
         # Save trained model
-        algorithm.save_model("models/simple_trained_model.pth")
+        model_name = input("Enter model name to save: ")
+        algorithm.save_model(f"models/{model_name}.pth")
         
         # Display results
         print(f"\n{colors['success']}Training completed!{colors['reset']}")
@@ -906,7 +972,7 @@ def main():
     
     # Run test games
     test_wins = 0
-    num_test_games = 5
+    num_test_games = 100
     
     print(f"\n{colors['title']}Running test games...{colors['reset']}")
     
