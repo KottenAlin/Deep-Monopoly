@@ -100,7 +100,7 @@ class MonopolyGame:
                     f"{colors['prompt']}{key} (default {param[key]}): {colors['reset']}"
                 )
                 if value:
-                    if value.lower == 'exit':
+                    if value.lower() == 'exit':
                         print(f"{colors['error']}Exiting parameter selection.")
                         return
                     try:
@@ -129,7 +129,9 @@ class MonopolyGame:
                                 token,
                                 is_bot=True,
                                 game=self,
-                                bot_type="neural")
+                                bot_type="neural",
+                                run_with_input=True,
+                                )
             else:
                 token = "🤖"
                 player = Player(
@@ -139,6 +141,7 @@ class MonopolyGame:
                     game=self,
                     bot_type="default",
                     bot_parameters=bots_parameters[i],
+
                 )
             players.append(player)
             print(f"{colors['bot']}Added AI player: {name} {token}")

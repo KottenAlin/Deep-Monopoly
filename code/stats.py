@@ -656,7 +656,34 @@ def display_game_statistics(game_stats):
                 
             print(f"  {colors['info']}{key}: {param_color}{value:.2f}{colors['reset']}")
 
-
+    print(f"\n{colors['title']}=== WINNER PROPERTY STATISTICS ==={colors['reset']}")
+    
+    # Display most commonly owned properties by winners
+    print(f"\n{colors['info']}Most Common Properties Owned by Winners:{colors['reset']}")
+    if game_stats["winner_properties"]:
+        sorted_props = sorted(game_stats["winner_properties"].items(), key=lambda x: x[1], reverse=True)
+        for prop, count in sorted_props[:5]:  # Show top 5
+            win_percentage = (count / game_stats["games_played"]) * 100
+            print(f"{colors['property']}{prop}: {count} wins ({win_percentage:.1f}%){colors['reset']}")
+    
+    # Display property color groups most commonly owned by winners
+    print(f"\n{colors['info']}Most Common Color Groups Owned by Winners:{colors['reset']}")
+    if game_stats["winner_property_colors"]:
+        sorted_colors = sorted(game_stats["winner_property_colors"].items(), key=lambda x: x[1], reverse=True)
+        for color, count in sorted_colors:
+            win_percentage = (count / (game_stats["games_played"] * 3)) * 100  # Assuming average 3 properties per color
+            print(f"{colors['property']}{color}: {count} properties ({win_percentage:.1f}%){colors['reset']}")
+    
+    # Display house distribution of winners
+    print(f"\n{colors['info']}House Distribution of Winners:{colors['reset']}")
+    if game_stats["winner_house_distribution"]:
+        total_properties = sum(game_stats["winner_house_distribution"].values())
+        if total_properties > 0:
+            for houses, count in game_stats["winner_house_distribution"].items():
+                percentage = (count / total_properties) * 100 if total_properties > 0 else 0
+                house_label = "Hotel" if houses == "hotel" else f"{houses} House(s)"
+                print(f"{colors['property']}{house_label}: {count} properties ({percentage:.1f}%){colors['reset']}")
+    
 def main():
     print("Training completed for all game histories.")
 

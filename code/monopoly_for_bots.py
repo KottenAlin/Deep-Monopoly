@@ -8,21 +8,21 @@ from board import Board
 from player import Player
 
 from stats import display_statistics, display_game_statistics
-from variables import bots_parameters, game_stats, colors, num_games
+from variables import bots_parameters, game_stats, colors, num_games, initialise_game_stats
 
 
 """ 
     Monopoly Game for Bot Players with less things #printed for speed
     """
 
+initialise_game_stats(4) #:(
 
 # initiate risk tolerance for each bot
 
 
-
 class MonopolyGame:
     def __init__(
-        self, bot_count=2, neural_bot_count=2, bots_parameters=[], game_count=0
+        self, bot_count=2, neural_bot_count=2, bots_parameters=bots_parameters, game_count=0,
     ):
 
         if bot_count < 2:
@@ -149,6 +149,38 @@ class MonopolyGame:
             if game_stats["wins_by_player"]:
                 game_stats["wins_by_player"][active_players[0].name] += 1
                 game_stats["turns"][self.winner.name] = self.turn_count
+                
+                # Track winner's properties and house distribution
+                self.record_winner_properties(self.winner)
+
+    def record_winner_properties(self, winner):
+        """Record statistics about the winner's properties and houses"""
+        # Track properties owned by the winner
+        for prop in winner.properties:
+            prop_name = prop.name
+            if prop_name in game_stats["winner_properties"]:
+                game_stats["winner_properties"][prop_name] += 1
+            else:
+                game_stats["winner_properties"][prop_name] = 1
+            
+            # Track color groups
+            if hasattr(prop, "color"):
+                color = prop.color.value if hasattr(prop.color, "value") else str(prop.color)
+                if color in game_stats["winner_property_colors"]:
+                    game_stats["winner_property_colors"][color] += 1
+                else:
+                    game_stats["winner_property_colors"][color] = 1
+            
+            # Track house distribution
+            if hasattr(prop, "houses"):
+                if prop.houses > 0 and prop.houses <= 4:
+                    game_stats["winner_house_distribution"][str(prop.houses)] += 1
+                elif prop.houses == 0:
+                    game_stats["winner_house_distribution"]["0"] += 1
+            
+            # Track hotels
+            if hasattr(prop, "hotel") and prop.hotel:
+                game_stats["winner_house_distribution"]["hotel"] += 1
 
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -503,6 +535,10 @@ class MonopolyGame:
             if game_stats["wins_by_player"]:
                 game_stats["wins_by_player"][self.winner.name] += 1
                 game_stats["game_over_500_turns"] += 1
+                
+                # Track winner's properties and house distribution
+                self.record_winner_properties(self.winner)
+                
             self.game_over = True
             return
 
@@ -539,29 +575,6 @@ class MonopolyGame:
         return result
 
 
-            property_count = len(player.properties)
-            house_count = sum(
-                p.houses for p in player.properties if hasattr(p, "houses")
-            )
-            hotel_count = sum(
-                1 for p in player.properties if hasattr(p, "hotel") and p.hotel
-            )
-            mortgaged_count = sum(
-                1 for p in player.properties if p.status == PropertyStatus.MORTGAGED
-            )
-
-            print(
-                f"{colors['info']}{player.name}: {property_count} properties, {house_count} houses, {hotel_count} hotels, {mortgaged_count} mortgaged, ${player.money}{colors['reset']}"
-            )
-
-        # display all bankrupt players
-        bankrupt_players = [p for p in self.players if p.bankrupt]
-        if bankrupt_players:
-            print(f"{colors['title']}\n=== BANKRUPT PLAYERS ==={colors['reset']}")
-            for player in bankrupt_players:
-                print(f"{colors['error']}{player.name} is bankrupt.{colors['reset']}")
-
-
 def select_parameters(self):
     print(f"{self.colors['title']}=== SELECT BOT PARAMETERS ===")
 
@@ -576,6 +589,8 @@ def select_parameters(self):
                 bots_parameters[i][key] = float(value)
             else:
                 print(f"{self.colors['info']}Using default value for {key}: {param[key]}")
+
+
 
 def main():
     # Global variable to track game statistics
@@ -595,6 +610,8 @@ def main():
     except ValueError:
         print(f"{colors['error']}Invalid input. Please enter a number.{colors['reset']}")
         main()
+        
+        
 
     if bot_count < 2 or bot_count > 8:
         print(
@@ -603,25 +620,7 @@ def main():
         return
 
     # Initialize all statistics for each bot
-    for i in range(bot_count):
-        bot_name = f"Bot {i+1}"
-        # Basic stats
-        game_stats["wins_by_player"][bot_name] = 0
-        game_stats["bankrupt_count"][bot_name] = 0
-        game_stats["turns"][bot_name] = 0
-        
-        # Advanced stats
-        game_stats["avg_houses_per_player"][bot_name] = 0
-        game_stats["avg_hotels_per_player"][bot_name] = 0
-        game_stats["monopolies_owned"][bot_name] = 0
-        game_stats["avg_rent_collected"][bot_name] = 0
-        game_stats["total_rent_collected"][bot_name] = 0
-        game_stats["property_acquisitions"][bot_name] = 0
-        game_stats["trades_made"][bot_name] = 0
-        game_stats["trades_accepted"][bot_name] = 0
-        game_stats["trades_rejected"][bot_name] = 0
-        game_stats["most_valuable_property"][bot_name] = {"name": "None", "rent": 0}
-        game_stats["most_owned_property_type"][bot_name] = {}
+    initialise_game_stats(bot_count)
 
     for i in range(num_games):  # play 100 games
         print(f"{colors['info']}Game {i+1} of 100{colors['reset']}")
