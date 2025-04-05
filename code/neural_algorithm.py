@@ -954,10 +954,14 @@ def main():
     
     # Ask whether to run self-play or direct training
     choice = input(f"{colors['prompt']}1. Run self-play tournament\n2. Train against standard bots\nChoose an option: {colors['reset']}")
+    try:
+        NUMBER_OF_EPOCHS = int(input("Enter number of epochs: "))
+    except ValueError:
+        pass
     
     if choice == "1":
         print(f"{colors['title']}Running self-play tournament...{colors['reset']}")
-        algorithm.run_self_play_tournament(generations=25, matches_per_generation=NUMBER_OF_GAMES)
+        algorithm.run_self_play_tournament(generations=NUMBER_OF_EPOCHS, matches_per_generation=NUMBER_OF_GAMES)
     else:
         print(f"{colors['title']}Running training against standard bots...{colors['reset']}")
         results = algorithm.run_training_games(num_games=NUMBER_OF_GAMES, num_epochs=NUMBER_OF_EPOCHS)

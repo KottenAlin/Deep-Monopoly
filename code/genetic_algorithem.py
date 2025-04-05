@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 import monopoly_for_bots
 from Bot import Bot, parameters
+from variables import game_stats
 
 
 class GeneticBot(Bot):

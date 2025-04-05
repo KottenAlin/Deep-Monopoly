@@ -22,9 +22,10 @@ from variables import bots_parameters, game_stats, colors, num_games, initialise
 
 class MonopolyGame:
     def __init__(
-        self, bot_count=2, neural_bot_count=2, bots_parameters=bots_parameters, game_count=0,
+        self, bot_count=2, neural_bot_count=2, bots_parameters=bots_parameters, game_count=0, game_stats=None
     ):
-        initialise_game_stats(bot_count, neural_bot_count)
+        self.game_stats = game_stats
+            
         
         if bot_count < 2:
             print(
@@ -113,8 +114,8 @@ class MonopolyGame:
         if total_assets < amount_due:
             # print(f"{colors['error']}\n{player.name} is bankrupt!{colors['reset']}")
             player.bankrupt = True
-            if game_stats["bankrupt_count"]:
-                game_stats["bankrupt_count"][player.name] += 1
+            if self.game_stats["bankrupt_count"]:
+                self.game_stats["bankrupt_count"][player.name] += 1
             self.transfer_assets(player, recipient)
         else:
             if player.bot.decide_mortgage_property(
@@ -124,8 +125,8 @@ class MonopolyGame:
                 return True
             else:
                 player.bankrupt = True
-                if game_stats["bankrupt_count"]:
-                    game_stats["bankrupt_count"][player.name] += 1
+                if self.game_stats["bankrupt_count"]:
+                    self.game_stats["bankrupt_count"][player.name] += 1
                 self.transfer_assets(player, recipient)
         return False
 
@@ -149,9 +150,10 @@ class MonopolyGame:
             print(
                 f"{colors['success']}{self.winner.name} wins the game!{colors['reset']}"
             )
-            if game_stats["wins_by_player"]:
-                game_stats["wins_by_player"][active_players[0].name] += 1
-                game_stats["turns"][self.winner.name] = self.turn_count
+            # Ensure we're properly tracking wins
+            if self.winner.name in self.game_stats["wins_by_player"]:
+                self.game_stats["wins_by_player"][self.winner.name] += 1
+                self.game_stats["turns"][self.winner.name] = self.turn_count
                 
                 # Track winner's properties and house distribution
                 self.record_winner_properties(self.winner)
@@ -161,29 +163,29 @@ class MonopolyGame:
         # Track properties owned by the winner
         for prop in winner.properties:
             prop_name = prop.name
-            if prop_name in game_stats["winner_properties"]:
-                game_stats["winner_properties"][prop_name] += 1
+            if prop_name in self.game_stats["winner_properties"]:
+                self.game_stats["winner_properties"][prop_name] += 1
             else:
-                game_stats["winner_properties"][prop_name] = 1
+                self.game_stats["winner_properties"][prop_name] = 1
             
             # Track color groups
             if hasattr(prop, "color"):
                 color = prop.color.value if hasattr(prop.color, "value") else str(prop.color)
-                if color in game_stats["winner_property_colors"]:
-                    game_stats["winner_property_colors"][color] += 1
+                if color in self.game_stats["winner_property_colors"]:
+                    self.game_stats["winner_property_colors"][color] += 1
                 else:
-                    game_stats["winner_property_colors"][color] = 1
+                    self.game_stats["winner_property_colors"][color] = 1
             
             # Track house distribution
             if hasattr(prop, "houses"):
                 if prop.houses > 0 and prop.houses <= 4:
-                    game_stats["winner_house_distribution"][str(prop.houses)] += 1
+                    self.game_stats["winner_house_distribution"][str(prop.houses)] += 1
                 elif prop.houses == 0:
-                    game_stats["winner_house_distribution"]["0"] += 1
+                    self.game_stats["winner_house_distribution"]["0"] += 1
             
             # Track hotels
             if hasattr(prop, "hotel") and prop.hotel:
-                game_stats["winner_house_distribution"]["hotel"] += 1
+                self.game_stats["winner_house_distribution"]["hotel"] += 1
 
     def handle_property_landing(self, player, property, dice_sum=None):
         if property.status == PropertyStatus.UNOWNED:
@@ -197,13 +199,13 @@ class MonopolyGame:
             if player.pay(rent):
                 property.owner.receive(rent)
                 # Track rent collection statistics
-                if game_stats["total_rent_collected"]:
-                    game_stats["total_rent_collected"][property.owner.name] += rent
+                if self.game_stats["total_rent_collected"]:
+                    self.game_stats["total_rent_collected"][property.owner.name] += rent
                 
                 # Track property value statistics
-                if game_stats["most_valuable_property"] and property.owner.name in game_stats["most_valuable_property"]:
-                    if rent > game_stats["most_valuable_property"][property.owner.name]["rent"]:
-                        game_stats["most_valuable_property"][property.owner.name] = {
+                if self.game_stats["most_valuable_property"] and property.owner.name in self.game_stats["most_valuable_property"]:
+                    if rent > self.game_stats["most_valuable_property"][property.owner.name]["rent"]:
+                        self.game_stats["most_valuable_property"][property.owner.name] = {
                             "name": property.name,
                             "rent": rent
                         }
@@ -227,16 +229,16 @@ class MonopolyGame:
             property.status = PropertyStatus.OWNED
             
             # Track property acquisition statistics
-            if game_stats["property_acquisitions"]:
-                game_stats["property_acquisitions"][player.name] += 1
+            if self.game_stats["property_acquisitions"]:
+                self.game_stats["property_acquisitions"][player.name] += 1
                 
             # Track property types owned
-            if game_stats["most_owned_property_type"] and player.name in game_stats["most_owned_property_type"]:
+            if self.game_stats["most_owned_property_type"] and player.name in self.game_stats["most_owned_property_type"]:
                 property_color = property.color.value if hasattr(property, "color") else "Special"
-                if property_color in game_stats["most_owned_property_type"][player.name]:
-                    game_stats["most_owned_property_type"][player.name][property_color] += 1
+                if property_color in self.game_stats["most_owned_property_type"][player.name]:
+                    self.game_stats["most_owned_property_type"][player.name][property_color] += 1
                 else:
-                    game_stats["most_owned_property_type"][player.name][property_color] = 1
+                    self.game_stats["most_owned_property_type"][player.name][property_color] = 1
             
             # print(f"{colors['success']}{player.name} now owns {property.name}!{colors['reset']}")
         else:
@@ -422,11 +424,11 @@ class MonopolyGame:
                     
                     # Track house/hotel statistics
                     if hasattr(property, "houses") and property.houses > 0:
-                        game_stats["avg_houses_per_player"][player.name] += 1
+                        self.game_stats["avg_houses_per_player"][player.name] += 1
                     if hasattr(property, "hotel") and property.hotel:
-                        game_stats["avg_hotels_per_player"][player.name] += 1
+                        self.game_stats["avg_hotels_per_player"][player.name] += 1
                         # Subtract houses when converting to hotel (typically 4 houses become 1 hotel)
-                        game_stats["avg_houses_per_player"][player.name] -= 4
+                        #self.game_stats["avg_houses_per_player"][player.name] -= 4
                 # Check if property already has a hotel
                 else:
                     # print(f"{colors['error']}Not enough money to buy a {type} (${cost}).{colors['reset']}")
@@ -499,11 +501,11 @@ class MonopolyGame:
                 monopoly_count += 1
         
         # Update monopoly statistics
-        if monopoly_count > 0 and player.name in game_stats["monopolies_owned"]:
+        if monopoly_count > 0 and player.name in self.game_stats["monopolies_owned"]:
             # Track the maximum number of monopolies this player has had
-            current_monopolies = game_stats["monopolies_owned"][player.name]
+            current_monopolies = self.game_stats["monopolies_owned"][player.name]
             if monopoly_count > current_monopolies:
-                game_stats["monopolies_owned"][player.name] = monopoly_count
+                self.game_stats["monopolies_owned"][player.name] = monopoly_count
 
     def decide_winner(self):
         # print(f"{colors['title']}\n=== GAME REACHED 500 TURNS LIMIT ==={colors['reset']}")
@@ -511,9 +513,7 @@ class MonopolyGame:
         # Find the player with the most money
         active_players = [p for p in self.players if not p.bankrupt]
         if active_players:
-            self.winner = max(active_players, key=lambda p: p.money)
-
-            # Calculate total value (money + properties)
+            # Calculate total value (money + properties) for each player
             player_values = {}
             for p in active_players:
                 total_value = p.money
@@ -524,6 +524,9 @@ class MonopolyGame:
                     if hasattr(prop, "hotel") and prop.hotel:
                         total_value += prop.house_price * 5
                 player_values[p.name] = total_value
+            
+            # Choose winner based on total value, not just money
+            self.winner = max(active_players, key=lambda p: player_values[p.name])
 
             """print(f"{colors['title']}\n=== FINAL STANDINGS ==={colors['reset']}")
             for name, value in sorted(player_values.items(), key=lambda x: x[1], reverse=True):
@@ -535,12 +538,19 @@ class MonopolyGame:
             print(
                 f"{colors['success']}{self.winner.name} WINS THE GAME WITH ${self.winner.money}!{colors['reset']}"
             )
-            if game_stats["wins_by_player"]:
-                game_stats["wins_by_player"][self.winner.name] += 1
-                game_stats["game_over_500_turns"] += 1
+            
+            # Properly update statistics for time-limit games
+            if "wins_by_player" in game_stats and self.winner.name in self.game_stats["wins_by_player"]:
+                self.game_stats["wins_by_player"][self.winner.name] += 1
+            
+            if "game_over_500_turns" in game_stats:
+                self.game_stats["game_over_500_turns"] += 1
                 
-                # Track winner's properties and house distribution
-                self.record_winner_properties(self.winner)
+            if "turns" in game_stats and self.winner.name in self.game_stats["turns"]:
+                self.game_stats["turns"][self.winner.name] = self.turn_count
+                
+            # Track winner's properties and house distribution
+            self.record_winner_properties(self.winner)
                 
             self.game_over = True
             return
@@ -557,9 +567,8 @@ class MonopolyGame:
             self.play_turn()
 
             if turns >= 500:
-                if game_stats["game_over_500_turns"]:
-                    game_stats["game_over_500_turns"] += 1
                 self.decide_winner()
+                break  # Make sure we exit the loop after deciding a winner
 
             if turns % 100 == 0 and turns != 0:
                 """input(f"{colors['prompt']}Display statistics? (y/n): {colors['reset']}").lower()
@@ -575,6 +584,10 @@ class MonopolyGame:
             "winner": self.winner.name if self.winner else None,
         }
 
+        # Make sure to update game stats properly
+        if self.winner and self.winner.name in self.game_stats["wins_by_player"]:
+            self.game_stats["wins_by_player"][self.winner.name] += 1
+            
         return result
 
 
@@ -615,7 +628,6 @@ def main():
         print(f"{colors['error']}Invalid input. Please enter a number.{colors['reset']}")
         main()
         
-        
 
     if bot_count < 2 or bot_count > 8:
         print(
@@ -623,23 +635,29 @@ def main():
         )
         return
     else:
-            # Initialize all statistics for each bot
+        # Initialize all statistics for each bot
         print(f"{colors['info']}Initializing game statistics...{colors['reset']}")
         initialise_game_stats(bot_count, neural_bot_count)
 
-
+    # Reset global statistics to ensure clean tracking
+    game_stats["games_played"] = 0
+    game_stats["game_over_500_turns"] = 0
 
     for i in range(num_games):  # play 100 games
-        print(f"{colors['info']}Game {i+1} of 100{colors['reset']}")
+        print(f"{colors['info']}Game {i+1} of {num_games}{colors['reset']}")
         game = MonopolyGame(
             bot_count=bot_count,
             neural_bot_count=neural_bot_count,
             bots_parameters=bots_parameters,
             game_count=i,
+            game_stats=game_stats,
         )
-        game.play_game()
+        result = game.play_game()
         # Update statistics
         game_stats["games_played"] += 1
+        
+        # Debug: Print current win count after each game
+        # print(f"DEBUG: Current wins - {self.game_stats['wins_by_player']}")
 
     # save_game_history()
     display_game_statistics(game_stats)
