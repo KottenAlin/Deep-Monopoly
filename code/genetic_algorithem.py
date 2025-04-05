@@ -1,7 +1,7 @@
 import random
 import matplotlib.pyplot as plt
 
-from monopoly_for_bots import MonopolyGame, bots_parameters
+import monopoly_for_bots
 from Bot import Bot, parameters
 
 
@@ -191,8 +191,8 @@ class GeneticBot(Bot):
                 # Run multiple games for more accurate evaluation
                 for _ in range(games_per_individual):
                     # Set up a new game
-                    game = MonopolyGame(
-                        bot_count=4, neural_bot_count=0, bots_parameters=bots_parameters
+                    game = monopoly_for_bots.MonopolyGame(
+                        bot_count=4, neural_bot_count=0
                     )
 
                     # Replace player 0 with our genetic bot
@@ -342,9 +342,12 @@ def main():
         print(f"{param}: {value:.4f}")
     input("Press Enter to continue...")
     # Create a game with a trained genetic bot
-    game = MonopolyGame(
+    
+    
+    game = monopoly_for_bots.MonopolyGame(
         bot_count=4, neural_bot_count=0, bots_parameters=best_parameters
     )
+
 
     # Set player 0 as a genetic bot with trained parameters
     player = game.players[0]

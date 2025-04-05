@@ -1,9 +1,10 @@
 from Bot import Bot, parameters
 
 from game_models import PropertyStatus, Property
-from colorama import Fore, Style, Back
-from variables import colors
 
+from variables import colors
+import os
+from pathlib import Path
 
 class Player:
     def __init__(
@@ -14,6 +15,7 @@ class Player:
         game=None,
         bot_parameters=parameters,
         bot_type="default",
+        run_with_input=False,
     ):
         """ """
 
@@ -32,12 +34,57 @@ class Player:
                 # Import locally to avoid circular dependency
                 from neural_algorithm import ActionNeuralBot
 
+
                 self.bot = ActionNeuralBot(self, game=game, display=False)
+                if run_with_input:
+                    self.show_loading_models()
             else:
                 self.bot = Bot(
                     self, game=game, parameters=bot_parameters, display=False
                 )
             self.bot_type = bot_type
+
+
+    def show_loading_models(self):
+        
+        # Find models directory relative to the current file
+        if input("load models from folder? (y/n): ").lower() != 'y':
+            return None
+        
+        models_dir = Path('models/')
+
+        # Get all model files
+        model_files = [f for f in os.listdir(models_dir)]
+        
+        if not model_files:
+            print(f"{colors['warning']}No models found in {models_dir}{colors['reset']}")
+            return None
+        
+        # Display available models
+        print(f"{colors['info']}Available models:{colors['reset']}")
+        for i, model_file in enumerate(model_files):
+            print(f"{i+1}. {model_file}")
+        
+        # Let the user choose a model
+        while True:
+            choice = input(f"{colors['prompt']}Select a model number to load (or 'q' to quit): {colors['reset']}")
+            if choice.lower() == 'q':
+                return None
+            
+            try:
+                index = int(choice) - 1
+                if 0 <= index < len(model_files):
+                    model_path = str(models_dir / model_files[index])
+                    print(f"{colors['success']}Loading model: {model_files[index]}{colors['reset']}")
+                    
+                    # Import locally to avoid circular dependency
+                    self.bot.load_model(model_path)
+                    print(f"{colors['success']}Model loaded successfully!{colors['reset']}")
+                    return model_files[index]
+                else:
+                    print(f"{colors['error']}Invalid selection. Please choose a number between 1 and {len(model_files)}{colors['reset']}")
+            except ValueError:
+                print(f"{colors['error']}Please enter a valid number or 'q'{colors['reset']}")
 
     def move(self, steps, board_size=40):
         old_position = self.position
