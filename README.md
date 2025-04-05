@@ -25,6 +25,8 @@ pytorch
 
 numpy
 matplotlib
+colorama
+
 ```
 
 ### Installation
@@ -39,9 +41,20 @@ pip install -r requirements.txt
 
 ```python
 
-code not added
+```python
+# Run the main game
+python code/main.py
+
+# Train a neural network agent
+python code/neural_algorithm.py --train
+
+# Run a genetic algorithm experiment
+python code/genetic_algorithem.py
+
 
 ```
+
+
 
 ## Methodology
 
@@ -52,7 +65,7 @@ code not added
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Sebastian Alin: Sebastian200 and KottenAlin
 
 ## License
 

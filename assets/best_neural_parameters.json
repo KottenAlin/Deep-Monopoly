@@ -1,12 +1,12 @@
 {
-    "risk_tolerance": 0.9881870150566101,
-    "property_focus": 0.06847496330738068,
-    "development_focus": 0.6884977221488953,
-    "cash_reserve_preference": 0.04408160224556923,
-    "trade_willingness": 0.8960936069488525,
-    "monopoly_focus": 0.7107683420181274,
-    "railroad_utility_interest": 0.012610145844519138,
-    "property_management_focus": 0.06643423438072205,
-    "trade_acceptance_threshold": 0.2282266616821289,
-    "property_value_assessment": 0.3300543427467346
+    "risk_tolerance": 0.4814710319042206,
+    "property_focus": 0.4737948477268219,
+    "development_focus": 0.4968373775482178,
+    "cash_reserve_preference": 0.48758020997047424,
+    "trade_willingness": 0.4602716863155365,
+    "monopoly_focus": 0.489941269159317,
+    "railroad_utility_interest": 0.49674463272094727,
+    "property_management_focus": 0.4630613327026367,
+    "trade_acceptance_threshold": 0.4887561500072479,
+    "property_value_assessment": 0.4498172104358673
 }

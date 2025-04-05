@@ -2,13 +2,8 @@
 
 ## Ready
 
-- Devide the program in file
-  - add the bot in separate folders
 
 - record all move for statistical purpus
-- make conservative and agressive bots
-
-- implement neural network
 - add paremeters to bot
 - unit test
 - add strandard global variables
@@ -31,6 +26,10 @@
 - add trading compatibility
 - Only bot monopoly
 - Monopoly statistics
+- implement neural network
+- make conservative and agressive bots
+- Devide the program in file
+  - add the bot in separate folders
 
 
 
