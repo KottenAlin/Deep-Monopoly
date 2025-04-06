@@ -13,7 +13,7 @@ import os
 from game_models import Property, PropertyColor, PropertyStatus
 import types
 from colorama import Fore, Style
-from variables import colors
+from variables import colors, game_stats, initialise_game_stats
 
 # Simplified hyperparameters
 LEARNING_RATE = 0.0001
@@ -81,7 +81,7 @@ class ReplayBuffer:
 
 class NeuralAlgorithm:
     """A neural algorithm for Monopoly"""
-    def __init__(self, learning_rate=0.01, memory_size=500, batch_size=32, hidden_size=64):
+    def __init__(self, learning_rate=0.01, memory_size=500, batch_size=32, hidden_size=128):
         self.input_size = 124
         self.hidden_size = hidden_size
         self.output_size = 10  # Can be adjusted based on decision types needed
@@ -344,9 +344,11 @@ class NeuralAlgorithm:
                 param_list = [parameters[name] for name in self.parameter_names]
                 
                 # Play game
+                initialise_game_stats(4, 1)
                 game = monopoly_for_bots.MonopolyGame(
                     bot_count=4,
                     neural_bot_count=1,
+                    game_stats = game_stats
                 )
                 
                 # Initialize neural bot
@@ -471,9 +473,11 @@ class NeuralAlgorithm:
                     # Play matches between models i and j
                     for _ in range(matches_per_generation // 10):
                         # Create game
+                        initialise_game_stats(4, 4)
                         game = monopoly_for_bots.MonopolyGame(
                             bot_count=4,
-                            neural_bot_count=2
+                            neural_bot_count=4,
+                            game_stats=game_stats
                         )
                         
                         # Setup bots
@@ -573,8 +577,12 @@ class ActionNeuralBot(Bot):
         self.hidden_dim = 64
         self.output_dim = 10
         
-        # Create the model
+        #load model
         self.model = MonopolyNeuralModel(self.input_dim, self.hidden_dim, self.output_dim)
+        if True:
+            self.model.load_state_dict(torch.load("models/simple_trained_model.pth"))
+            print(f"Model loaded from models/best.pth")
+        
         
         # Exploration parameter
         self.epsilon = 0.2
@@ -990,10 +998,12 @@ def main():
     for i in range(num_test_games):
         print(f"Test game {i+1}/{num_test_games}...")
         
+        initialise_game_stats(4, 1)
         # Create game with neural bot
         game = monopoly_for_bots.MonopolyGame(
             bot_count=4,
             neural_bot_count=1,
+            game_stats=game_stats,
         )
         
         # Initialize neural bot with our model

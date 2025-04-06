@@ -150,13 +150,10 @@ class MonopolyGame:
             print(
                 f"{colors['success']}{self.winner.name} wins the game!{colors['reset']}"
             )
-            # Ensure we're properly tracking wins
-            if self.winner.name in self.game_stats["wins_by_player"]:
-                self.game_stats["wins_by_player"][self.winner.name] += 1
-                self.game_stats["turns"][self.winner.name] = self.turn_count
+
                 
                 # Track winner's properties and house distribution
-                self.record_winner_properties(self.winner)
+            self.record_winner_properties(self.winner)
 
     def record_winner_properties(self, winner):
         """Record statistics about the winner's properties and houses"""
@@ -538,10 +535,6 @@ class MonopolyGame:
             print(
                 f"{colors['success']}{self.winner.name} WINS THE GAME WITH ${self.winner.money}!{colors['reset']}"
             )
-            
-            # Properly update statistics for time-limit games
-            if "wins_by_player" in game_stats and self.winner.name in self.game_stats["wins_by_player"]:
-                self.game_stats["wins_by_player"][self.winner.name] += 1
             
             if "game_over_500_turns" in game_stats:
                 self.game_stats["game_over_500_turns"] += 1
