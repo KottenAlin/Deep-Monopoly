@@ -14,45 +14,60 @@ from variables import bots_parameters, colors
 class MonopolyGame:
 
     def __init__(self):
-        # clear screan
-        os.system("cls" if os.name == "nt" else "clear")
 
         # Initialize colorama for cross-platform color support
         init(autoreset=True)  # Automatically reset colors after each print
+        
+        def print_invalid_input():
+            print(f"{colors['error']}Invalid input. Please try again.")
+            time.sleep(1)
 
         # Get player count with default value handling
-        print(f"{colors['title']}=== MONOPOLY GAME SETUP ===")
-        try:
-            player_count_input = input(
-                f"{colors['prompt']}Enter number of players (default 0): {colors['reset']}"
-            ).strip()
-            player_count = int(player_count_input) if player_count_input else 0
-
-            # Get bot count with default value handling
-            bot_count_input = input(
-                f"{colors['prompt']}Enter number of bots (default 2): {colors['reset']}"
-            ).strip()
-            neural_bot_count_input =input(f"{colors['prompt']}Enter number of bots that are neural (default 0): {colors['reset']}").strip()
+        while True:
+            os.system("cls" if os.name == "nt" else "clear")
             
-            if input(f"{colors['prompt']}Select Parameters (y/n): {colors['reset']}") == 'y':
-                self.select_parameters()
-                pass
-            bot_count = int(bot_count_input) if bot_count_input else 2
-            neural_bot_count = int(neural_bot_count_input) if neural_bot_count_input else 0
-        except ValueError:
-            time.sleep(2)
-            MonopolyGame()
-
-        # Check for valid player and bot counts
-        if bot_count + player_count < 2:
-            print(
-                f"{colors['error']}Not enough players to start the game.")
-            time.sleep(2)
-            MonopolyGame()
-        elif player_count + bot_count > 8:
-            print(f"{colors['error']}Too many players! Max 8 players.")
-            time.sleep(2)
-            MonopolyGame()
+            print(f"{colors['title']}=== MONOPOLY GAME SETUP ===")
+            try:
+                # Get player count
+                player_count_input = input(f"{colors['prompt']}Enter number of players (0-8) (default 0): {colors['reset']}").strip()
+                player_count = int(player_count_input) if player_count_input else 0
+                
+                if player_count < 0 or player_count > 8:
+                    print_invalid_input()
+                    continue
+                    
+                # Get bot count
+                max_bots = 8 - player_count
+                bot_count_input = input(f"{colors['prompt']}Enter number of bots (0-{max_bots}) (default 2): {colors['reset']}").strip()
+                bot_count = int(bot_count_input) if bot_count_input else 2
+                
+                if bot_count < 0 or bot_count > max_bots:
+                    print_invalid_input()
+                    continue
+                    
+                # Get neural bot count
+                neural_bot_count_input = input(f"{colors['prompt']}Enter number of bots that are neural (0-{bot_count}) (default 0): {colors['reset']}").strip()
+                neural_bot_count = int(neural_bot_count_input) if neural_bot_count_input else 0
+                
+                if neural_bot_count < 0 or neural_bot_count > bot_count:
+                    print_invalid_input()
+                    continue
+                
+                # Final validation
+                if player_count + bot_count < 2:
+                    print(f"{colors['error']}Not enough players to start the game (minimum 2).")
+                    continue
+                    
+                # If we get here, all inputs are valid
+                self.bot_count = bot_count  # Store bot_count as instance variable
+                break
+                
+            except ValueError:
+                print_invalid_input()
+            
+        if input(f"{colors['prompt']}Select Parameters (y/n): {colors['reset']}") == 'y':
+            self.select_parameters()
+        
 
         self.board = Board()
         self.players = self.create_players(
@@ -95,6 +110,8 @@ class MonopolyGame:
         print(f"{colors['info']}Enter custom parameters: (type exit to exit))")
         for i, param in enumerate(bots_parameters):
             print(f"{colors['info']}Bot {i + 1}:")
+            if i > self.bot_count:
+                break
             for key in param:
                 value = input(
                     f"{colors['prompt']}{key} (default {param[key]}): {colors['reset']}"
@@ -438,8 +455,7 @@ class MonopolyGame:
         elif space_name == "Almänning":
             self.handle_card(player, "Almänning")
         elif space_name == "Inkomstskatt":
-            tax = min(200, int(player.money *
-                               0.1))  # Pay $200 or 10%, whichever is less
+            tax = 200  
             if player.pay(tax):
                 print(
                     f"{colors['warning']}{player.name} pays {colors['money']}${tax} in Income Tax."
@@ -640,31 +656,28 @@ class MonopolyGame:
         )
 
         cash_amount = 0
-        if cash_option == "1":
-            cash_amount = int(
-                input(
-                    f"{colors['prompt']}How much will you pay? (You have {colors['money']}${player.money}): ${colors['reset']}"
-                ))
-            if cash_amount > player.money:
-                print(f"{colors['error']}You don't have that much money.")
-                return
-        elif cash_option == "2":
-            cash_amount = -int(
-                input(
-                    f"{colors['prompt']}How much will you request? ({trade_partner.name} has {colors['money']}${trade_partner.money}): ${colors['reset']}"
-                ))
-            if -cash_amount > trade_partner.money:
-                print(
-                    f"{colors['error']}{trade_partner.name} doesn't have that much money."
-                )
-                return
+        try:
+            if cash_option == "1":
+                cash_amount = int(input(f"{colors['prompt']}How much will you pay? (You have {colors['money']}${player.money}): ${colors['reset']}"))
+                
+                if cash_amount > player.money or cash_amount < 0:
+                    print(f"{colors['error']}You don't have that much money, or invalid amount.")
+                    return
+            elif cash_option == "2":
+                cash_amount = -int(input(f"{colors['prompt']}How much will you request? ({trade_partner.name} has {colors['money']}${trade_partner.money}): ${colors['reset']}"))
+                if -cash_amount > trade_partner.money or -cash_amount < 0:
+                    print(
+                        f"{colors['error']}{trade_partner.name} doesn't have that much money, or invalid amount."
+                    )
+                    return
+        except ValueError:
+            print(f"{colors['error']}Invalid cash amount.")
+            return
 
         # If bot, automatically decide
         if trade_partner.is_bot:
             # Simple bot logic for deciding trades
-            accept = trade_partner.bot.decide_trade(request_property,
-                                                    offer_property,
-                                                    -cash_amount)
+            accept = trade_partner.bot.decide_trade(request_property, offer_property, cash_amount)
             print(f"{colors['bot']}Bot evaluating trade offer...")
 
             if accept:
@@ -1005,8 +1018,6 @@ class MonopolyGame:
     def play_turn(self):
         player = self.players[self.current_player_idx]
 
-        if not player.is_bot:
-            input("tets...")
 
         # os.system('cls' if os.name == 'nt' else 'clear')
 
