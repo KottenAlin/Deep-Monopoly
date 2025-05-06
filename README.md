@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 ```python
 
-```python
+
 # Run the main game
 python code/main.py
 
@@ -51,6 +51,7 @@ python code/neural_algorithm.py --train
 # Run a genetic algorithm experiment
 python code/genetic_algorithem.py
 
+```
 
 ## Methodology
 
