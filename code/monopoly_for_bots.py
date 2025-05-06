@@ -600,15 +600,25 @@ def select_parameters(self):
                 print(f"{self.colors['info']}Using default value for {key}: {param[key]}")
 
 
-
 def main():
     # Global variable to track game statistics
     global game_stats
+    
+    def print_value_error():
+        print(f"{colors['error']}Invalid input. Please enter a number.{colors['reset']}")
+        main()
+
+    os.system("cls" if os.name == "nt" else "clear")
+    print(f"{colors['title']}=== MONOPOLY GAME FOR BOTS ==={colors['reset']}")
 
     try:
-        os.system("cls" if os.name == "nt" else "clear")
+        
         bot_count_input = input(f"{colors['prompt']}Enter number of bots (0-8): {colors['reset']}")
         bot_count = int(bot_count_input) if bot_count_input else 2
+        
+        if bot_count < 2 or bot_count > 8:
+            print_value_error()
+        
         if input(f"{colors['prompt']}Use custom parameters? (y/n): {colors['reset']}").lower() == "y":
             select_parameters()
         
@@ -616,10 +626,11 @@ def main():
                 f"{colors['prompt']}how many should be neural bots? (0-{bot_count_input}): {colors['reset']}"
             )
         neural_bot_count = int(neural_bot_count_input) if neural_bot_count_input else 0
+        if neural_bot_count < 0 or neural_bot_count > bot_count:
+            print_value_error()
         
     except ValueError:
-        print(f"{colors['error']}Invalid input. Please enter a number.{colors['reset']}")
-        main()
+        print_value_error()
         
 
     if bot_count < 2 or bot_count > 8:
